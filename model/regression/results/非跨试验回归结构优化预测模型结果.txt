@@ -1,0 +1,17 @@
+被试内去噪模式: winsor | 变化样本数: 6/128
+
+=== 被试内 (within-subject) ===
+feature_set                     method  r2_mean   r2_std  mae_mean  mae_std  mape_mean  mape_std
+         20                   baseline 0.456032 0.077592 43.731810 5.474821   0.283687  0.022026
+         20 structured_partial_pooling 0.457209 0.080398 43.616622 5.101383   0.281698  0.021736
+
+被试内 RIDGE_ALPHA 扫描: 最佳 alpha=1.0, structured R2_mean=0.4948
+ ridge_alpha  r2_mean_structured  mae_mean_structured  mape_mean_structured
+         0.0            0.479712            41.086432              0.261719
+         0.2            0.487393            41.004237              0.261882
+         0.4            0.491448            41.005477              0.262366
+         0.6            0.493545            41.022163              0.262845
+         0.8            0.494507            41.066690              0.263476
+         1.0            0.494783            41.127737              0.264182
+         1.2            0.494629            41.183925              0.264808
+        10.0            0.471286            42.840687              0.276795

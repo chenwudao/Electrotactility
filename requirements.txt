@@ -1,0 +1,27 @@
+# EF项目依赖文件
+# 创建日期: 2026-03-12
+# 使用方法: conda activate hci && pip install -r requirements.txt
+
+# 核心科学计算库 (兼容版本)
+numpy==1.26.4
+scipy==1.11.4
+pandas==2.1.4
+
+# 机器学习库
+scikit-learn==1.3.2
+
+# 可视化库
+matplotlib==3.8.2
+seaborn==0.13.0
+
+# 高级机器学习库 (可选，用于模型对比)
+xgboost==2.0.3
+lightgbm==4.1.0
+catboost==1.2.2
+
+# Excel文件处理
+openpyxl==3.1.2
+xlrd==2.0.1
+
+# 其他工具库
+typing-extensions==4.9.0

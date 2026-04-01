@@ -1,0 +1,5 @@
+﻿scenario,true_label,pred_0,pred_1
+Non-Cross Subject,0,56,8
+Non-Cross Subject,1,11,53
+Cross Subject,0,55,9
+Cross Subject,1,11,53

@@ -1,0 +1,15 @@
+# 12个最优特征
+SELECTED_12_FEATURES = [
+    'v1-v2',
+    'LOG_R2',
+    '指围-指长',
+    '45. FFM% of Right Arm',
+    '199. Measured Circumference of Neck',
+    '206. Measured Circumference of Left Thigh',
+    'GLCM_t_0_d_2_SVD15_465',
+    'STHOS_r_2_a_45_LRHGLE_22',
+    'LBP_r3_pt_17_342',
+    'LBP_r3_pt_18_343',
+    'ZER_r3_pt_4_80',
+    'ZER_r3_pt_19_95',
+]

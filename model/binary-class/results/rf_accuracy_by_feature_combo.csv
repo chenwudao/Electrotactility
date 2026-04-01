@@ -1,0 +1,8 @@
+﻿combo,group_key,k,within_acc_margin15,cross_acc_margin15,within_n_features,cross_n_features,combo_display
+Overall,解剖,5,0.7581538461538461,0.7357142857142858,5,5,Overall
+Local,图像,18,0.7741538461538461,0.7678571428571429,18,18,Local
+Bioelectrical,电学,9,0.7501538461538462,0.719047619047619,9,9,Bioelectrical
+Overall+Local,解剖+图像,11,0.8516923076923076,0.8416666666666668,11,11,Overall+Local
+Overall+Bioelectrical,电学+解剖,9,0.7815384615384615,0.7559523809523809,9,9,Overall+Bioelectrical
+Local+Bioelectrical,电学+图像,27,0.7818461538461537,0.7702380952380953,27,27,Local+Bioelectrical
+All Three,电学+解剖+图像,12,0.852,0.8476190476190478,12,11,All

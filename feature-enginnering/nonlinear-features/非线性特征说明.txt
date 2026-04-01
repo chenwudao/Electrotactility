@@ -1,0 +1,133 @@
+================================================================================
+非线性特征工程 - 12个最优特征扩展
+================================================================================
+
+处理日期: 2026-01-29
+样本数: 128
+
+【原始特征 (12个)】
+   1. v1-v2
+   2. LOG_R2
+   3. 指围-指长
+   4. 45. FFM% of Right Arm
+   5. 199. Measured Circumference of Neck
+   6. 206. Measured Circumference of Left Thigh
+   7. GLCM_t_0_d_2_SVD15_465
+   8. STHOS_r_2_a_45_LRHGLE_22
+   9. LBP_r3_pt_17_342
+  10. LBP_r3_pt_18_343
+  11. ZER_r3_pt_4_80
+  12. ZER_r3_pt_19_95
+
+【新增特征分类】
+
+1. 平方项 (12个):
+   - v1-v2_^2
+   - LOG_R2_^2
+   - 指围-指长_^2
+   - 45. FFM% of Right Arm_^2
+   - 199. Measured Circumference of Neck_^2
+   - 206. Measured Circumference of Left Thigh_^2
+   - GLCM_t_0_d_2_SVD15_465_^2
+   - STHOS_r_2_a_45_LRHGLE_22_^2
+   - LBP_r3_pt_17_342_^2
+   - LBP_r3_pt_18_343_^2
+   - ZER_r3_pt_4_80_^2
+   - ZER_r3_pt_19_95_^2
+
+2. 立方项 (12个):
+   - v1-v2_^3
+   - LOG_R2_^3
+   - 指围-指长_^3
+   - 45. FFM% of Right Arm_^3
+   - 199. Measured Circumference of Neck_^3
+   - 206. Measured Circumference of Left Thigh_^3
+   - GLCM_t_0_d_2_SVD15_465_^3
+   - STHOS_r_2_a_45_LRHGLE_22_^3
+   - LBP_r3_pt_17_342_^3
+   - LBP_r3_pt_18_343_^3
+   - ZER_r3_pt_4_80_^3
+   - ZER_r3_pt_19_95_^3
+
+3. 交互项 (8个):
+   - v1-v2 × LOG_R2
+   - v1-v2 × 指围-指长
+   - LOG_R2 × 45. FFM% of Right Arm
+   - 指围-指长 × 199. Measured Circumference of Neck
+   - 45. FFM% of Right Arm × 206. Measured Circumference of Left Thigh
+   - GLCM_t_0_d_2_SVD15_465 × STHOS_r_2_a_45_LRHGLE_22
+   - LBP_r3_pt_17_342 × LBP_r3_pt_18_343
+   - ZER_r3_pt_4_80 × ZER_r3_pt_19_95
+
+4. 对数变换 (12个):
+   - log(v1-v2)
+   - log(LOG_R2)
+   - log(指围-指长)
+   - log(45. FFM% of Right Arm)
+   - log(199. Measured Circumference of Neck)
+   - log(206. Measured Circumference of Left Thigh)
+   - log(GLCM_t_0_d_2_SVD15_465)
+   - log(STHOS_r_2_a_45_LRHGLE_22)
+   - log(LBP_r3_pt_17_342)
+   - log(LBP_r3_pt_18_343)
+   - log(ZER_r3_pt_4_80)
+   - log(ZER_r3_pt_19_95)
+
+5. 指数变换 (12个):
+   - exp(v1-v2)
+   - exp(LOG_R2)
+   - exp(指围-指长)
+   - exp(45. FFM% of Right Arm)
+   - exp(199. Measured Circumference of Neck)
+   - exp(206. Measured Circumference of Left Thigh)
+   - exp(GLCM_t_0_d_2_SVD15_465)
+   - exp(STHOS_r_2_a_45_LRHGLE_22)
+   - exp(LBP_r3_pt_17_342)
+   - exp(LBP_r3_pt_18_343)
+   - exp(ZER_r3_pt_4_80)
+   - exp(ZER_r3_pt_19_95)
+
+6. 分段线性 (36个):
+   - ReLU(v1-v2, q=0.25)
+   - ReLU(v1-v2, q=0.50)
+   - ReLU(v1-v2, q=0.75)
+   - ReLU(LOG_R2, q=0.25)
+   - ReLU(LOG_R2, q=0.50)
+   - ReLU(LOG_R2, q=0.75)
+   - ReLU(指围-指长, q=0.25)
+   - ReLU(指围-指长, q=0.50)
+   - ReLU(指围-指长, q=0.75)
+   - ReLU(45. FFM% of Right Arm, q=0.25)
+   - ReLU(45. FFM% of Right Arm, q=0.50)
+   - ReLU(45. FFM% of Right Arm, q=0.75)
+   - ReLU(199. Measured Circumference of Neck, q=0.25)
+   - ReLU(199. Measured Circumference of Neck, q=0.50)
+   - ReLU(199. Measured Circumference of Neck, q=0.75)
+   - ReLU(206. Measured Circumference of Left Thigh, q=0.25)
+   - ReLU(206. Measured Circumference of Left Thigh, q=0.50)
+   - ReLU(206. Measured Circumference of Left Thigh, q=0.75)
+   - ReLU(GLCM_t_0_d_2_SVD15_465, q=0.25)
+   - ReLU(GLCM_t_0_d_2_SVD15_465, q=0.50)
+   - ReLU(GLCM_t_0_d_2_SVD15_465, q=0.75)
+   - ReLU(STHOS_r_2_a_45_LRHGLE_22, q=0.25)
+   - ReLU(STHOS_r_2_a_45_LRHGLE_22, q=0.50)
+   - ReLU(STHOS_r_2_a_45_LRHGLE_22, q=0.75)
+   - ReLU(LBP_r3_pt_17_342, q=0.25)
+   - ReLU(LBP_r3_pt_17_342, q=0.50)
+   - ReLU(LBP_r3_pt_17_342, q=0.75)
+   - ReLU(LBP_r3_pt_18_343, q=0.25)
+   - ReLU(LBP_r3_pt_18_343, q=0.50)
+   - ReLU(LBP_r3_pt_18_343, q=0.75)
+   - ReLU(ZER_r3_pt_4_80, q=0.25)
+   - ReLU(ZER_r3_pt_4_80, q=0.50)
+   - ReLU(ZER_r3_pt_4_80, q=0.75)
+   - ReLU(ZER_r3_pt_19_95, q=0.25)
+   - ReLU(ZER_r3_pt_19_95, q=0.50)
+   - ReLU(ZER_r3_pt_19_95, q=0.75)
+
+
+【特征统计】
+  原始特征数: 12
+  新增特征数: 92
+  总特征数: 104
+  扩展比例: 8.7x
