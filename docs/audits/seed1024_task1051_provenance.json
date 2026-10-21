@@ -1,0 +1,12 @@
+{
+  "execution_task": "87de1baa-1130-46ce-9e41-91ea39b8e916/task-1051",
+  "transcript": "/home/jesse/.gemini/antigravity/brain/87de1baa-1130-46ce-9e41-91ea39b8e916/.system_generated/logs/transcript_full.jsonl",
+  "source_line": 1056,
+  "step_index": 1050,
+  "created_at": "2026-10-14T03:05:55Z",
+  "executed_command_matches_running_task_description": true,
+  "command_sha256": "efe687e952ffe735019f89ea6103f9778d6f85a8ef2baa5a9e4f2915504da87f",
+  "extracted_code_sha256": "c9b6f17d7489cc16cad8880ae32c919ab6942aab5d920b6f713dd68497bdd78e",
+  "configuration_count": 2400,
+  "note": "Exact code argument recovered from executed command, not a new implementation. Not executed during this audit."
+}

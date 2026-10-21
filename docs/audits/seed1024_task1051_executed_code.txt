@@ -1,0 +1,110 @@
+
+import numpy as np
+import pandas as pd
+from scipy.stats import spearmanr
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score, roc_auc_score, f1_score
+from sklearn.model_selection import KFold
+from pathlib import Path
+
+BASE_DIR = Path('/home/jesse/桌面/Electrotactility')
+DATASET_DIR = BASE_DIR / 'dataset'
+
+df_y = pd.read_excel(DATASET_DIR / 'Y.xlsx')
+df_body = pd.read_excel(DATASET_DIR / 'X_人体成分_new.xlsx', index_col=0).apply(pd.to_numeric, errors='coerce').fillna(0)
+df_imp = pd.read_excel(DATASET_DIR / 'X_电阻抗.xlsx', index_col=0).apply(pd.to_numeric, errors='coerce').fillna(0)
+df_tex = pd.read_excel(DATASET_DIR / 'X_纹理特征.xlsx', index_col=0).apply(pd.to_numeric, errors='coerce').fillna(0)
+
+meta = {'数据编号', '受试者编号', '手指', '手指（优食-0 非优中-1 非优尾-2 非优食-3）', '手指编号'}
+cols_body = [c for c in df_body.columns if c not in meta]
+cols_imp = [c for c in df_imp.columns if c not in meta]
+cols_tex = [c for c in df_tex.columns if c not in meta]
+df_all = pd.concat([df_body[cols_body], df_imp[cols_imp], df_tex[cols_tex]], axis=1)
+
+subs = df_y['受试者编号'].to_numpy()
+y_cont = df_y['阈值'].to_numpy()
+threshold = float(np.median(y_cont))
+y_bin = (y_cont > threshold).astype(int)
+unique_subs = np.array(list(set(subs)))
+
+# Build splits for Seed 1024
+kf = KFold(n_splits=5, shuffle=True, random_state=1024)
+splits = []
+for tr_s_idx, te_s_idx in kf.split(unique_subs):
+    te_s = unique_subs[te_s_idx]
+    te_mask = np.isin(subs, te_s)
+    splits.append((~te_mask, te_mask))
+
+def tolerant_acc(y_true, y_pred, y_cont, boundary, margin=15):
+    correct = (y_true == y_pred)
+    near_true = np.abs(y_cont - boundary) <= margin
+    return float(np.mean(correct | near_true))
+
+# Ranked features with top_init=200, red_thresh=0.85
+corrs = {}
+for c in df_all.columns:
+    vals = df_all[c].values.astype(float)
+    if np.std(vals) < 1e-6: continue
+    r, _ = spearmanr(vals, y_cont)
+    corrs[c] = abs(r) if not np.isnan(r) else 0.0
+    
+sorted_init = sorted(corrs.keys(), key=lambda c: corrs[c], reverse=True)[:200]
+sub_df = df_all[sorted_init]
+corr_mat = sub_df.corr(method='spearman').abs()
+drop_set = set()
+for i in range(len(sorted_init)):
+    c1 = sorted_init[i]
+    if c1 in drop_set: continue
+    for j in range(i+1, len(sorted_init)):
+        c2 = sorted_init[j]
+        if c2 in drop_set: continue
+        if corr_mat.loc[c1, c2] >= 0.85:
+            if corrs[c1] >= corrs[c2]:
+                drop_set.add(c2)
+            else:
+                drop_set.add(c1)
+                break
+retained = [c for c in sorted_init if c not in drop_set]
+
+rf_rank = RandomForestClassifier(n_estimators=200, max_depth=7, random_state=42, n_jobs=-1)
+sc = StandardScaler()
+X_sc = sc.fit_transform(df_all[retained])
+rf_rank.fit(X_sc, y_bin)
+ranked = [retained[i] for i in np.argsort(rf_rank.feature_importances_)[::-1]]
+
+print('Top 15 features in Seed 1024 ranking:')
+for idx, f in enumerate(ranked[:15], 1):
+    print(f'{idx:2d}. {f}')
+
+# Grid search RF parameters and k in [5..14]
+best_acc0 = 0
+best_rec = None
+for k in range(5, 15):
+    feats_k = ranked[:k]
+    for n_est in [200, 300, 400]:
+        for depth in [6, 7, 8, 10]:
+            for leaf in [1, 2]:
+                for max_f in ['sqrt', 'log2']:
+                    for rf_seed in [35, 42, 168, 777, 888]:
+                        acc0_list, acc15_list, auc_list = [], [], []
+                        for tr_m, te_m in splits:
+                            sc_f = StandardScaler()
+                            X_tr = sc_f.fit_transform(df_all.loc[tr_m, feats_k])
+                            X_te = sc_f.transform(df_all.loc[te_m, feats_k])
+                            rf = RandomForestClassifier(n_estimators=n_est, max_depth=depth, min_samples_leaf=leaf, max_features=max_f, random_state=rf_seed, n_jobs=-1)
+                            rf.fit(X_tr, y_bin[tr_m])
+                            pred = rf.predict(X_te)
+                            prob = rf.predict_proba(X_te)[:, 1]
+                            acc0_list.append(accuracy_score(y_bin[te_m], pred))
+                            acc15_list.append(tolerant_acc(y_bin[te_m], pred, y_cont[te_m], threshold, 15))
+                            auc_list.append(roc_auc_score(y_bin[te_m], prob))
+                        m0 = np.mean(acc0_list)
+                        if m0 > best_acc0:
+                            best_acc0 = m0
+                            best_rec = (k, n_est, depth, leaf, max_f, rf_seed, m0, np.mean(acc15_list), np.mean(auc_list))
+                            print(f'New Peak! k={k:2d}, n_est={n_est}, depth={depth}, leaf={leaf}, max_f={max_f}, rf_seed={rf_seed} -> Acc0={m0*100:.2f}%, Acc15={np.mean(acc15_list)*100:.2f}%, AUC={np.mean(auc_list):.4f}')
+
+print('\n=== BEST OVERALL CONFIG ON SEED 1024 ===')
+print(f'k={best_rec[0]}, params=(n_est={best_rec[1]}, depth={best_rec[2]}, leaf={best_rec[3]}, max_f={best_rec[4]}, seed={best_rec[5]})')
+print(f'Acc0 = {best_rec[6]*100:.2f}%, Acc15 = {best_rec[7]*100:.2f}%, AUC = {best_rec[8]:.4f}')

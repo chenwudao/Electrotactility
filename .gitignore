@@ -1,0 +1,29 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# CatBoost output
+catboost_info/
+
+# Large experimental data & local manuscripts (>100MB)
+5_实验数据/
+Manuscript.docx
+审稿意见.docx
+*.zip
+*.tar.gz
+*.tgz
+
+# OS generated files
+.DS_Store
+Thumbs.db

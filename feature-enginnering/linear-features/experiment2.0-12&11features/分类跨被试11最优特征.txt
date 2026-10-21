@@ -5,7 +5,7 @@ SELECTED_11_FEATURES = [
     '指围-指长',
     '45. FFM% of Right Arm',
     '206. Measured Circumference of Left Thigh',
-    'BP_Perimeter_11',
+    'BP_Perimeter_12',
     'GLCM_t_0_d_2_SVD15_465',
     'STHOS_r_2_a_45_LRHGLE_22',
     'LBP_r3_pt_17_342',

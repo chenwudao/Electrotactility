@@ -1,8 +1,10 @@
-﻿combo,group_key,k,within_acc_margin15,cross_acc_margin15,within_n_features,cross_n_features,combo_display
-Overall,解剖,5,0.7581538461538461,0.7357142857142858,5,5,Overall
-Local,图像,18,0.7741538461538461,0.7678571428571429,18,18,Local
-Bioelectrical,电学,9,0.7501538461538462,0.719047619047619,9,9,Bioelectrical
-Overall+Local,解剖+图像,11,0.8516923076923076,0.8416666666666668,11,11,Overall+Local
-Overall+Bioelectrical,电学+解剖,9,0.7815384615384615,0.7559523809523809,9,9,Overall+Bioelectrical
-Local+Bioelectrical,电学+图像,27,0.7818461538461537,0.7702380952380953,27,27,Local+Bioelectrical
-All Three,电学+解剖+图像,12,0.852,0.8476190476190478,12,11,All
+﻿combo_display,within_acc_margin0,cross_acc_margin0,within_acc_margin15,cross_acc_margin15
+Sex,0.625,0.625,0.734375,0.734375
+Sex+Height,0.6484375,0.640625,0.7734375,0.75
+Overall,0.6875,0.578125,0.8125,0.71875
+Local,0.5546875,0.5703125,0.7109375,0.71875
+Bioelectrical,0.578125,0.5234375,0.6953125,0.671875
+Overall+Local,0.7109375,0.6640625,0.8203125,0.7734375
+Overall+Bioelectrical,0.6953125,0.6015625,0.796875,0.734375
+Local+Bioelectrical,0.5703125,0.546875,0.703125,0.703125
+All Three,0.7421875,0.7265625,0.84375,0.8125
