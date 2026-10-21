@@ -21,9 +21,9 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.pa
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 FEAT_FILE = os.path.join(
     BASE_DIR,
-    r"feature-enginnering\linear-features\experiment1.0-50features\X_结合相关互相关_spe_0.9_rfr_50.xlsx",
+    r"feature-enginnering/linear-features/experiment1.0-50features/X_结合相关互相关_spe_0.9_rfr_50.xlsx",
 )
-LABEL_FILE = os.path.join(BASE_DIR, r"feature-enginnering\linear-features\experiment1.0-50features\Y.xlsx")
+LABEL_FILE = os.path.join(BASE_DIR, r"feature-enginnering/linear-features/experiment1.0-50features/Y.xlsx")
 SUBJECT_COL = "受试者编号"
 
 N_SPLITS = 5

@@ -18,9 +18,9 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULTS_DIR = os.path.join(BASE_DIR, "model", "regression", "results")
 FEAT_FILE = os.path.join(
     BASE_DIR,
-    r"feature-enginnering\linear-features\experiment1.0-50features\X_结合相关互相关_spe_0.9_rfr_50.xlsx",
+    r"feature-enginnering/linear-features/experiment1.0-50features/X_结合相关互相关_spe_0.9_rfr_50.xlsx",
 )
-LABEL_FILE = os.path.join(BASE_DIR, r"feature-enginnering\linear-features\experiment1.0-50features\Y.xlsx")
+LABEL_FILE = os.path.join(BASE_DIR, r"feature-enginnering/linear-features/experiment1.0-50features/Y.xlsx")
 
 WITHIN_RESULTS = os.path.join(RESULTS_DIR, "model_comparison_regression_within.xlsx")
 CROSS_RESULTS = os.path.join(RESULTS_DIR, "model_comparison_regression_cross.xlsx")

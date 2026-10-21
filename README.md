@@ -1,198 +1,92 @@
 # Electrotactility
 
-电刺激阈值预测项目，当前仓库已经整理为「数据集 -> 特征工程 -> 建模 -> 图表输出」四层结构。
+电触觉感知阈值（Perception Threshold, PT）多模态预测项目。仓库整理为「原始数据与特征表 -> 特征工程 -> 双层嵌套交叉验证与建模 -> 论文图表与文档输出」结构。
 
-本项目主要包含两类任务：
+本项目包含两类核心任务：
 
-- 二分类任务：基于阈值中位数将样本划分为两类，分别做被试内与跨被试验证。
-- 回归任务：直接预测连续阈值，同时比较被试内、跨被试和带截距建模的方案。
+- **二分类任务（主任务）**：基于训练折感知阈值中位数（`156.0 μs`）将样本划分为高/低阈值两类，采用严格的 **双层嵌套交叉验证（Outer 5-Fold + Inner 3-Fold Multi-Block PLS-DA VIP）** 进行非跨被试（Non-Cross Subject）与跨被试（Cross-Subject）评估。
+- **回归任务**：直接预测连续感知阈值，比较非跨被试、跨被试与静态截距校准方案。
 
-## 目录结构
+---
+
+## 📦 大型原始数据集（Google Drive 下载）
+
+由于原始多模态实验采集数据（`5_实验数据/`，总大小约 **2.7 GB**）超出 GitHub 大文件存储限制，完整原始数据集已托管至 **Google Drive**：
+
+- 🔗 **Google Drive 原始数据集下载链接（`5_实验数据/`, 2.7 GB）**：  
+  **[👉 点击前往 Google Drive 下载原始实验数据集 (5_实验数据)](https://drive.google.com/drive/folders/YOUR_GOOGLE_DRIVE_FOLDER_ID)** *(上传完成后将此处链接替换为您的 Google Drive 分享链接)*
+
+### `5_实验数据/` 包含的原始数据内容：
+```text
+5_实验数据/ (约 2.7 GB，从 Google Drive 下载后放置于项目根目录即可)
+├─ 图像数据/                # 32 名受试者手指高清光学图像与局部形态分割原始图
+├─ 电化学阻抗谱/            # 原始电化学阻抗谱 (EIS) 频谱测量数据
+├─ 电流电压波形/            # 电刺激前后原始电流与电压暂态波形数据
+├─ inbody770_data_all.xlsx  # InBody 770 全身人体成分分析仪原始导出总表
+└─ 指围信息_all.xlsx        # 受试者各手指几何尺寸与指围原始测量表
+```
+
+> **💡 快速复现提示**：仓库内的 `dataset/` 目录（仅 `4.8 MB`）已直接内置从上述原始数据中提取完毕的三模态完整特征矩阵（共 128 条样本 × 1,468 维原始特征）与阈值标签表。**无需下载 2.7 GB 原始图像/波形文件，克隆本仓库后即可直接运行所有特征筛选、嵌套交叉验证与论文图表生成脚本！**
+
+---
+
+## 📂 目录结构
 
 ```text
 Electrotactility/
-├─ dataset/
-│  ├─ X_人体成分_new.xlsx
-│  ├─ X_电阻抗.xlsx
-│  ├─ X_纹理特征.xlsx
-│  └─ Y.xlsx
-├─ feature-enginnering/
+├─ dataset/                                 # 已提取的三模态完整特征表与标签（随仓库直接提供）
+│  ├─ X_人体成分_new.xlsx                    # 全身生理与人体成分特征 (31 维)
+│  ├─ X_电阻抗.xlsx                          # 生物电阻抗与暂态电压特征 (15 维)
+│  ├─ X_纹理特征.xlsx                        # 手指局部几何形态与皮肤纹理特征 (1,422 维)
+│  └─ Y.xlsx                                # 标签表（感知阈值、受试者编号、性别、手指编号等）
+├─ revision_experiments/                    # 【最新】论文返修统一双层嵌套交叉验证与作图流水线
+│  ├─ run_all_unified_revision_closure.py   # 外五折 + 内三折 Multi-Block PLS-DA 特征筛选与全套实验主脚本
+│  ├─ generate_manuscript_style_figures.py  # 生成论文最终版 Fig. 9 – Fig. 15 全套 300 DPI 图表
+│  └─ results/                              # 统一协议导出的 CSV/Excel 统计表与高清图表
+├─ docs/                                    # 论文图表生成说明、方法学通俗解读与审稿回复文档
+│  ├─ Final_Figures_and_Nested_CV_Methodology_Guide.docx
+│  ├─ First_Author_Handover_and_Revision_Guide.docx
+│  └─ Point_by_Point_Response_to_Reviewers.docx
+├─ feature-enginnering/                     # 特征工程与早期筛选结果
 │  ├─ linear-features/
 │  │  ├─ experiment1.0-50features/
 │  │  └─ experiment2.0-12&11features/
 │  ├─ nonlinear-features/
 │  └─ scripts/
-├─ model/
+├─ model/                                   # 二分类、回归建模脚本与论文图表目录
 │  ├─ binary-class/
 │  ├─ regression/
-│  └─ figures/
-├─ catboost_info/
+│  └─ figures/                              # 论文图表同步输出目录 (Fig. 9 – Fig. 15)
 ├─ requirements.txt
 └─ README.md
 ```
 
-## 数据与特征
+---
 
-### `dataset/`
+## 🔬 最新核心实验方法（双层嵌套交叉验证 + Multi-Block PLS-DA）
 
-原始或基础整理后的输入数据。
+在最新返修版本中，全项目所有二分类实验与图表（`Fig. 9` – `Fig. 15`）均统一遵循**零数据泄漏双层嵌套交叉验证协议**：
 
-- `X_人体成分_new.xlsx`：人体成分相关特征。
-- `X_电阻抗.xlsx`：电阻抗相关特征。
-- `X_纹理特征.xlsx`：图像纹理相关特征。
-- `Y.xlsx`：标签表，包含阈值、受试者编号、手指信息等。
+1. **外层 5 折交叉验证（Outer 5-Fold CV）**：
+   - **Cross-Subject（跨被试）**：使用 `GroupKFold(n_splits=5)` 按 32 名受试者分组（每折 25 人 / 100 指训练，7 人 / 28 指盲测，同一受试者的 4 根手指绝不跨折）。
+   - **Non-Cross Subject（非跨被试）**：使用 `StratifiedKFold(n_splits=5)` 在样本级划分训练与盲测折。
+2. **内层 3 折 Multi-Block PLS-DA VIP 特征筛选（Inner 3-Fold CV）**：
+   - 仅在外层训练折内部划分 3 个内层折（17 人训练 / 8 人验证），依次执行：
+     1. **Z-Score 标准化**；
+     2. **多块等方差缩放（Multi-Block Equal-Variance Scaling）**：对全身生理（$p_1=31$）、生物电阻抗（$p_2=15$）、局部形态纹理（$p_3=1422$）分别按 $1/\sqrt{p_b}$ 缩放，使三大模态先验方差权重严格为 $1:1:1$；
+     3. **有监督 PLS-DA 潜变量投影（$C=2$）与 VIP（Variable Importance in Projection）计算**；
+     4. **共线性去重（$|\rho| < 0.85$）与内层投票确定最优模态配额 $k^*$**（跨被试 $k^*=10\sim 11$，非跨被试 $k^*=12$）。
+3. **外层多类机器学习算法全面评测与择优展示**：
+   - 外层训练折按内层选定的配额锁定唯一特征集，原封不动输入十余种主流机器学习分类器（涵盖 `RandomForest`、`ExtraTrees`、`XGBoost`、`LightGBM`、`CatBoost`、`AdaBoost`、`GBDT`、`KNN`、`SVM`、`LogisticRegression` 等）进行盲测评估。
+   - 最终挑选各流派表现最优的 4 个代表模型展示于 `Fig. 11`，并以全场准确率最高的 **`RandomForest`**（零容差 `Margin=0` 下 **74.22% / 72.66%**；`Margin=15 μs` 下 **84.38% / 81.25%**）作为主分类器完成容差灵敏度分析（`Fig. 12`）、包含 `Sex` 与 `Sex+Height` 基线的 9 组多模态消融实验（`Fig. 14`）及无后处理真实混淆矩阵（`Fig. 15`）。
 
-### `feature-enginnering/linear-features/`
+---
 
-线性特征工程结果。
+## 🚀 快速运行指南
 
-- `experiment1.0-50features/`
-  - 当前建模主输入目录。
-  - 关键文件：
-    - `X_结合相关互相关_spe_0.9_rfr_50.xlsx`
-    - `Y.xlsx`
-- `experiment2.0-12&11features/`
-  - 用于保存进一步筛选后的说明文件。
-  - 当前包含：
-    - `分类非跨被试12最优特征.txt`
-    - `分类跨被试11最优特征.txt`
+### 1. 环境安装
 
-### `feature-enginnering/nonlinear-features/`
-
-非线性扩展特征及说明。
-
-- `12特征_非线性扩展_完整.xlsx`
-- `12特征_扩展特征_仅新增.xlsx`
-- `非线性特征说明.txt`
-- `回归20线性+非线性最优特征.txt`
-
-### `feature-enginnering/scripts/`
-
-历史特征工程脚本集中目录。当前已经统一改为项目内相对路径。
-
-重点脚本：
-
-- [`path_utils.py`](/d:/Environment/research/EF/Electrotactility/feature-enginnering/scripts/path_utils.py)
-  - 特征工程脚本的统一路径入口。
-  - 负责解析 `dataset/`、`linear-features/`、`nonlinear-features/` 和脚本输出目录。
-  - 内置旧文件名到当前真实文件名的映射，便于兼容历史脚本。
-- `features_props*.py`
-  - 各类相关性、互相关、重要性统计脚本。
-- `features_select*.py`
-  - 特征筛选脚本。
-- `bingji.py`
-  - 特征表合并脚本。
-- `rfc_import_props.py`
-  - 分类任务特征重要性分析。
-- `overfit_validation_50features.py`
-  - 50 特征二分类过拟合验证。
-- `overfit_validation_nestedcv_binary.py`
-  - 嵌套交叉验证版本的二分类稳定性分析。
-
-说明：
-
-- `scripts/` 下仍保留较多历史实验脚本，命名具有明显阶段性。
-- 当前主建模流程主要依赖已经整理好的特征文件，不要求从头重新运行全部历史脚本。
-
-## 模型目录
-
-### `model/binary-class/`
-
-二分类任务脚本。
-
-核心入口：
-
-- [`rf_binary_12features_within.py`](/d:/Environment/research/EF/Electrotactility/model/binary-class/rf_binary_12features_within.py)
-  - 被试内二分类主脚本。
-  - 使用 12 个最优特征。
-  - 输入：
-    - `feature-enginnering/linear-features/experiment1.0-50features/X_结合相关互相关_spe_0.9_rfr_50.xlsx`
-    - `feature-enginnering/nonlinear-features/12特征_非线性扩展_完整.xlsx`
-- [`rf_binary_11features_cross.py`](/d:/Environment/research/EF/Electrotactility/model/binary-class/rf_binary_11features_cross.py)
-  - 跨被试二分类主脚本。
-  - 使用 11 个最优特征。
-
-辅助脚本位于 `model/binary-class/scripts/`：
-
-- `eval_feature_count_accuracy_*.py`
-  - 不同特征数下的性能评估。
-- `eval_feature_count_margin15_*.py`
-  - 带容忍度的性能评估。
-- `eval_feature_combo_accuracy.py`
-  - 特征组合对性能的影响分析。
-- `model_comparison_*.py`
-  - 多模型对比。
-- `plot_*.py`
-  - 图表绘制脚本。
-
-### `model/regression/`
-
-回归任务脚本。
-
-#### `non-cross-regression/`
-
-- [`regression_structured_prior_model.py`](/d:/Environment/research/EF/Electrotactility/model/regression/non-cross-regression/regression_structured_prior_model.py)
-  - 被试内回归主脚本之一。
-  - 使用 20 维特征集。
-  - 包含结构化先验、目标裁剪、平滑与多种基模型配置。
-- [`intercept_model_comparison.py`](/d:/Environment/research/EF/Electrotactility/model/regression/non-cross-regression/intercept_model_comparison.py)
-  - 被试内截距模型对比。
-
-#### `cross-regression/`
-
-- [`static_intercept_prediction_model.py`](/d:/Environment/research/EF/Electrotactility/model/regression/cross-regression/static_intercept_prediction_model.py)
-  - 跨被试截距预测主脚本。
-  - 核心思想：将动态特征预测与静态特征截距预测结合，缩小被试内与跨被试性能差距。
-- [`catboost_intercept_model.py`](/d:/Environment/research/EF/Electrotactility/model/regression/cross-regression/catboost_intercept_model.py)
-  - CatBoost 截距预测方案。
-- [`catboost_intercept_tuning.py`](/d:/Environment/research/EF/Electrotactility/model/regression/cross-regression/catboost_intercept_tuning.py)
-  - CatBoost 截距模型调参脚本。
-
-#### `scripts/`
-
-- `model_comparison_regression_cross.py`
-- `model_comparison_regression_within.py`
-- `plot_regression_model_comparison.py`
-
-用于回归模型对比和图表输出。
-
-### `model/figures/`
-
-已生成的主要图表输出目录，例如：
-
-- `confusion_matrices.png`
-- `feature_combo.png`
-- `feature_count_trend.png`
-- `margin_accuracy_within_vs_cross.png`
-- `model_comparison_within_vs_cross.png`
-- `regression_model_comparison_r2.png`
-- `regression_model_comparison_mae.png`
-- `regression_model_comparison_mape.png`
-
-## 当前主数据流
-
-推荐按下面的理解方式阅读项目：
-
-1. `dataset/` 提供基础数据表与标签表。
-2. `feature-enginnering/scripts/` 用于生成或分析特征。
-3. `feature-enginnering/linear-features/experiment1.0-50features/`
-   - 提供当前最核心的 50 维线性特征表。
-4. `feature-enginnering/nonlinear-features/`
-   - 提供非线性扩展特征。
-5. `model/binary-class/` 和 `model/regression/`
-   - 基于上述特征直接建模、对比并输出结果。
-
-换句话说，当前仓库最稳定的建模输入是：
-
-- `dataset/Y.xlsx`
-- `feature-enginnering/linear-features/experiment1.0-50features/X_结合相关互相关_spe_0.9_rfr_50.xlsx`
-- `feature-enginnering/nonlinear-features/12特征_非线性扩展_完整.xlsx`
-
-## 环境安装
-
-项目依赖见 [`requirements.txt`](/d:/Environment/research/EF/Electrotactility/requirements.txt)。
-
-建议使用单独环境：
+项目依赖见 [`requirements.txt`](./requirements.txt)：
 
 ```bash
 conda create -n electrotactility python=3.11
@@ -200,63 +94,50 @@ conda activate electrotactility
 pip install -r requirements.txt
 ```
 
-主要依赖包括：
-
-- `numpy`
-- `scipy`
-- `pandas`
-- `scikit-learn`
-- `matplotlib`
-- `seaborn`
-- `xgboost`
-- `lightgbm`
-- `catboost`
-- `openpyxl`
-
-## 运行建议
-
-### 二分类
-
-被试内：
+### 2. 一键复现最新双层嵌套交叉验证全套结果与论文图表（推荐）
 
 ```bash
-python model/binary-class/rf_binary_12features_within.py
+# 1. 运行双层嵌套交叉验证、PLS-DA 筛选、性别/身高混杂检验与多模态消融实验
+python revision_experiments/run_all_unified_revision_closure.py
+
+# 2. 一键生成论文最终版全套图表 (Fig. 9 - Fig. 15，自动同步至 model/figures/ 与 revision_experiments/results/figures/)
+python revision_experiments/generate_manuscript_style_figures.py
 ```
 
-跨被试：
+### 3. 运行单独建模脚本
 
+#### 二分类独立脚本
 ```bash
+# 非跨被试二分类
+python model/binary-class/rf_binary_12features_within.py
+
+# 跨被试二分类
 python model/binary-class/rf_binary_11features_cross.py
 ```
 
-### 回归
-
-被试内结构化先验回归：
-
+#### 回归任务脚本
 ```bash
+# 非跨被试结构化先验回归
 python model/regression/non-cross-regression/regression_structured_prior_model.py
-```
 
-跨被试静态截距预测：
-
-```bash
+# 跨被试静态截距预测
 python model/regression/cross-regression/static_intercept_prediction_model.py
 ```
 
-## 说明与约定
+---
 
-- 项目中的路径已经统一改为相对路径或基于项目根目录推导的路径。
-- 特征工程脚本优先通过 `feature-enginnering/scripts/path_utils.py` 做路径解析。
-- `catboost_info/` 是 CatBoost 运行时生成目录，可视为训练过程产物。
-- `model/figures/` 和各子目录下的结果文件属于实验输出，不是原始输入数据。
-- 目录名 `feature-enginnering` 保留了当前仓库中的现有拼写。
+## 📊 最终论文图表（`Fig. 9` – `Fig. 15`）对应清单
 
-## 后续维护建议
+所有最终版 300 DPI 图表同时保存在 `revision_experiments/results/figures/` 与 `model/figures/`：
 
-- 如果后续继续整理，可优先给 `feature-enginnering/scripts/` 做二次分组，例如拆成：
-  - `correlation/`
-  - `selection/`
-  - `validation/`
-  - `archive/`
-- 如果某些脚本已经完全退出主流程，可以单独建 `archive/` 目录归档。
-- 如果要复现实验，建议优先从 `model/` 下的主入口脚本开始，而不是从所有历史特征工程脚本逐个重跑。
+| 论文图号 | 文件名 (`model/figures/`) | 内容说明 |
+| :--- | :--- | :--- |
+| **Fig. 9** | `fig9_spearman_50features.png` | 50 个候选特征与感知阈值的 Spearman 相关性排位图（按三大模态分色） |
+| **Fig. 10** | `fig10_corr_matrix_50features.png` | 50 个候选特征的 50×50 互相关矩阵热力图 |
+| **Fig. 11** | `model_comparison_within_vs_cross_margin0.png` | 多类机器学习算法择优对比柱状图（精选各流派最高准确率代表模型 vs. Baseline） |
+| **Fig. 12** | `margin_accuracy_within_vs_cross.png` | 容差窗口灵敏度分析折线图（`Margin = 0, 5, 10, 15 μs`） |
+| **Fig. 13** | `fig13_inner_3fold_plsda.png` / `feature_count_trend.png` | 内层 3 折（Inner Fold 1, 2, 3）Multi-Block PLS-DA 筛选出的具体特征与 VIP 得分三列图 |
+| **Fig. 14** | `feature_combo_margin0.png` / `feature_combo.png` | 人口学基线（`Sex` / `Sex+Height`）与 7 种多模态组合消融对比柱状图 |
+| **Fig. 15** | `confusion_matrices_margin0.png` / `confusion_matrices.png` | 100% 真实无后处理的 2×2 混淆矩阵（a: Non-Cross Subject, b: Cross Subject） |
+
+详细通俗解读与每张图的论文写作指南请参阅 [`docs/Final_Figures_and_Nested_CV_Methodology_Guide.docx`](./docs/Final_Figures_and_Nested_CV_Methodology_Guide.docx)。
