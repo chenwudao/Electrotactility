@@ -797,12 +797,15 @@ def main():
             "Within_Fold_Selected": f"{freq_cnt}/5",
             "Beta_Unadj (μs/SD)": round(b1, 2),
             "SE_Unadj": round(s1, 2),
+            "CI95_Unadj": f"[{b1 - 1.96 * s1:.2f}, {b1 + 1.96 * s1:.2f}]",
             "p_Unadj": p1,
             "Beta_SexAdj (μs/SD)": round(b2, 2),
             "SE_SexAdj": round(s2, 2),
+            "CI95_SexAdj": f"[{b2 - 1.96 * s2:.2f}, {b2 + 1.96 * s2:.2f}]",
             "p_SexAdj": p2,
             "Beta_SexHeightAdj (μs/SD)": round(b3, 2),
             "SE_SexHeightAdj": round(s3, 2),
+            "CI95_SexHeightAdj": f"[{b3 - 1.96 * s3:.2f}, {b3 + 1.96 * s3:.2f}]",
             "p_SexHeightAdj": p3,
         })
 
@@ -824,6 +827,69 @@ def main():
 
     df_gee_out.to_excel(OUTPUT_DIR / "gee_clustered_associations.xlsx", index=False)
     df_gee_out.to_excel(OUTPUT_DIR / "feature_sex_adjusted_correlations.xlsx", index=False)
+
+    # 同步导出 Fig. 13 内层三折选出的 19 个不同特征的 GEE 关联结果表
+    fig13_features = [
+        ("45. FFM% of Right Arm", "Fat Free Mass% of Right Arm", "Global"),
+        ("227. SMM/WT", "Skeletal Muscle Mass/Weight", "Global"),
+        ("199. Measured Circumference of Neck", "Measured Circumference of Neck", "Global"),
+        ("217. SMI", "Skeletal Muscle Index", "Global"),
+        ("Phase", "Phase", "Bioelectrical"),
+        ("crestf_u", "v_pre, crestf", "Bioelectrical"),
+        ("v1-v2", "Δv", "Bioelectrical"),
+        ("LOG_R1", "LOG_R_1", "Bioelectrical"),
+        ("截面积-指长", "A_sur", "Local"),
+        ("截面积", "A_sec", "Local"),
+        ("BP_Perimeter_12", "BP_Perimeter", "Local"),
+        ("BP_Solidity_13", "BP_Solidity", "Local"),
+        ("GLCM_t_0_d_2_SVD15_465", "GLCM_d2_a0_SVD15", "Local"),
+        ("LBP_r3_pt_18_343", "LBP_r3_p18", "Local"),
+        ("LBP_r3_pt_76_401", "LBP_r3_p76", "Local"),
+        ("ZER_r0_pt_17_18", "ZER_r0_p17", "Local"),
+        ("ZER_r1_pt_8_34", "ZER_r1_p8", "Local"),
+        ("ZER_r3_pt_6_82", "ZER_r3_p6", "Local"),
+        ("ZER_r3_pt_4_80", "ZER_r3_p4", "Local"),
+    ]
+    f13_rows = []
+    height_sc = StandardScaler().fit_transform(height.reshape(-1, 1)).ravel()
+    for raw_c, disp_c, grp in fig13_features:
+        matches = np.flatnonzero(raw_col_names == raw_c)
+        if len(matches) == 0:
+            continue
+        x_sc = StandardScaler().fit_transform(X_all[:, matches[0]].reshape(-1, 1)).ravel()
+        b1, s1, p1 = fit_exchangeable_gee_numpy(y_cont, [x_sc], subs)
+        b2, s2, p2 = fit_exchangeable_gee_numpy(y_cont, [x_sc, gender], subs)
+        b3, s3, p3 = fit_exchangeable_gee_numpy(y_cont, [x_sc, gender, height_sc], subs)
+        f13_rows.append({
+            "Display_Name": disp_c,
+            "Raw_Feature": raw_c,
+            "Modality": grp,
+            "Beta_Unadj (μs/SD)": round(b1, 2),
+            "SE_Unadj": round(s1, 2),
+            "CI95_Unadj": f"[{b1 - 1.96 * s1:.2f}, {b1 + 1.96 * s1:.2f}]",
+            "p_Unadj": p1,
+            "Beta_SexAdj (μs/SD)": round(b2, 2),
+            "SE_SexAdj": round(s2, 2),
+            "CI95_SexAdj": f"[{b2 - 1.96 * s2:.2f}, {b2 + 1.96 * s2:.2f}]",
+            "p_SexAdj": p2,
+            "Beta_SexHeightAdj (μs/SD)": round(b3, 2),
+            "SE_SexHeightAdj": round(s3, 2),
+            "CI95_SexHeightAdj": f"[{b3 - 1.96 * s3:.2f}, {b3 + 1.96 * s3:.2f}]",
+            "p_SexHeightAdj": p3,
+        })
+    df_f13_gee = pd.DataFrame(f13_rows)
+    p_f13 = df_f13_gee["p_SexHeightAdj"].values
+    n_f13 = len(p_f13)
+    s_idx_f13 = np.argsort(p_f13)
+    q_f13 = np.zeros(n_f13)
+    for r_i, pv in enumerate(p_f13[s_idx_f13], start=1):
+        q_f13[r_i - 1] = pv * n_f13 / r_i
+    for i in range(n_f13 - 2, -1, -1):
+        q_f13[i] = min(q_f13[i], q_f13[i + 1])
+    fdr_f13 = np.zeros(n_f13)
+    fdr_f13[s_idx_f13] = np.clip(q_f13, 0, 1.0)
+    df_f13_gee["FDR_q_SexHeightAdj"] = np.round(fdr_f13, 4)
+    df_f13_gee.to_excel(OUTPUT_DIR / "gee_fig13_selected_features.xlsx", index=False)
 
     print("\n" + "=" * 95)
     print("【表 4：质疑点 3 & 4】受试者聚类 GEE 回归 (控制 Sex 与 Sex+Height + FDR 校正)")

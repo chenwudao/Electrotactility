@@ -1024,8 +1024,6 @@ def main():
     y_pos = np.arange(50)
 
     ax9.grid(False)
-    for gx in [-0.4, -0.2, 0.2, 0.4]:
-        ax9.axvline(gx, color="#e8e8e8", linewidth=0.75, zorder=0)
     ax9.barh(y_pos, rhos_50, height=0.72, color=bar_colors, edgecolor="#222222", linewidth=0.65, zorder=2)
     ax9.axvline(0.0, color="black", linewidth=0.9, zorder=3)
 
@@ -1072,7 +1070,12 @@ def main():
     )
 
     fig9.subplots_adjust(left=0.03, right=0.96, bottom=0.04, top=0.93)
-    for p9 in [FIGURES_DIR / "fig9_spearman_50features.png", REV_RES_DIR / "figures" / "fig9_spearman_50features.png"]:
+    for p9 in [
+        FIGURES_DIR / "fig9_spearman_50features.png",
+        FIGURES_DIR / "fig9_spearman_50features_nogrid.png",
+        REV_RES_DIR / "figures" / "fig9_spearman_50features.png",
+        REV_RES_DIR / "figures" / "fig9_spearman_50features_nogrid.png",
+    ]:
         fig9.savefig(p9, dpi=300)
     plt.close(fig9)
 
@@ -1200,7 +1203,7 @@ def main():
             })
         return fold_results
 
-    def draw_inner_3fold_columns(axes_row, fold_results, xlim_left=-2.35, xlim_right=2.05):
+    def draw_inner_3fold_columns(axes_row, fold_results, xlim_left=-3.28, xlim_right=2.05, show_bg_grid=True):
         for col_idx, (ax_c, fres) in enumerate(zip(axes_row, fold_results)):
             lbls = fres["labels"]
             grps_c = fres["groups"]
@@ -1210,82 +1213,98 @@ def main():
             c_bars = [color_map_f9[g] for g in grps_c]
 
             ax_c.grid(False)
-            for gx in [0.5, 1.0, 1.5, 2.0]:
-                ax_c.axvline(gx, color="#e8e8e8", linewidth=0.75, zorder=0)
+            if show_bg_grid:
+                for gx in [0.5, 1.0, 1.5, 2.0]:
+                    ax_c.axvline(gx, color="#e8e8e8", linewidth=0.8, zorder=0)
 
-            ax_c.barh(y_c, vips_c, height=0.68, color=c_bars, edgecolor="#222222", linewidth=0.65, zorder=2)
-            ax_c.axvline(0.0, color="black", linewidth=0.9, zorder=3)
-            ax_c.axvline(1.0, color="#888888", linestyle="--", linewidth=0.85, zorder=3)
+            ax_c.barh(y_c, vips_c, height=0.68, color=c_bars, edgecolor="#222222", linewidth=0.75, zorder=2)
+            ax_c.axvline(0.0, color="black", linewidth=1.0, zorder=3)
+            ax_c.axvline(1.0, color="#888888", linestyle="--", linewidth=0.95, zorder=3)
 
             ax_c.set_xlim(xlim_left, xlim_right)
             ax_c.set_ylim(-0.75, n_f - 0.25)
             ax_c.set_yticks([])
             ax_c.set_xticks([0.0, 0.5, 1.0, 1.5, 2.0])
-            ax_c.set_xticklabels(["0.0", "0.5", "1.0", "1.5", "2.0"], fontsize=12.5)
+            ax_c.set_xticklabels(["0.0", "0.5", "1.0", "1.5", "2.0"], fontsize=15.5)
             ax_c.xaxis.set_minor_locator(matplotlib.ticker.FixedLocator([0.25, 0.75, 1.25, 1.75]))
-            ax_c.tick_params(axis="x", which="major", direction="in", length=5, width=1.1, bottom=True, top=False)
-            ax_c.tick_params(axis="x", which="minor", direction="in", length=2.8, width=0.9, bottom=True, top=False)
-            ax_c.set_title(fres["fold_title"], fontsize=15, pad=8, fontweight="normal")
+            ax_c.tick_params(axis="x", which="major", direction="in", length=5.5, width=1.15, bottom=True, top=False, pad=5)
+            ax_c.tick_params(axis="x", which="minor", direction="in", length=3.0, width=0.95, bottom=True, top=False)
+            ax_c.set_title(fres["fold_title"], fontsize=19.0, pad=9, fontweight="normal")
 
             # 在 x 轴刻度行左侧标注 VIP
-            ax_c.text(-0.42, -1.05 * (n_f / 11.0), "VIP", fontsize=12.5, ha="center", va="top", clip_on=False)
+            ax_c.text(-0.52, -1.02 * (n_f / 11.0), "VIP", fontsize=15.5, ha="center", va="top", clip_on=False)
 
-            # 左侧框内特征名称与柱内 VIP 数值标注 (完全对齐 Fig. 9 样式)
+            # 左侧框内特征名称与柱内 VIP 数值标注 (保持单行排版，字号较原版放大一至两号)
             for idx_y, (lbl, v_val) in enumerate(zip(lbls, vips_c)):
-                ax_c.text(xlim_left + 0.08, idx_y, lbl, ha="left", va="center", fontsize=11.0, color="black")
-                ax_c.text(0.04, idx_y, f"{v_val:.2f}", ha="left", va="center", fontsize=11.0, color="black")
+                fs_lbl = 13.2 if len(lbl) >= 28 else 14.2
+                ax_c.text(xlim_left + 0.09, idx_y, lbl, ha="left", va="center", fontsize=fs_lbl, color="black")
+                ax_c.text(0.05, idx_y, f"{v_val:.2f}", ha="left", va="center", fontsize=14.2, color="black")
 
             for spine in ax_c.spines.values():
                 spine.set_visible(True)
                 spine.set_color("black")
-                spine.set_linewidth(1.1)
+                spine.set_linewidth(1.15)
 
-    # 1. 生成主版三列图 (1x3: Inner Fold 1, Inner Fold 2, Inner Fold 3)
+    # 1. 生成主版三列图 (1x3: Inner Fold 1, Inner Fold 2, Inner Fold 3) —— 含带背景线与无背景线双版本
     cross_3folds = get_inner_3fold_selected_50(is_cross_mode=True)
-    fig13_3col, axes13_3col = plt.subplots(1, 3, figsize=(16.8, 5.2), dpi=300)
-    draw_inner_3fold_columns(axes13_3col, cross_3folds, xlim_left=-2.35, xlim_right=2.05)
-
-    fig13_3col.legend(
-        handles=legend_handles,
-        loc="upper center",
-        bbox_to_anchor=(0.5, 0.995),
-        ncol=3,
-        frameon=False,
-        fontsize=14,
-        handlelength=1.8,
-        handleheight=1.1,
-        columnspacing=2.0,
-    )
-    fig13_3col.subplots_adjust(left=0.02, right=0.985, bottom=0.10, top=0.84, wspace=0.08)
-    for p13 in [
-        FIGURES_DIR / "feature_count_trend.png",
-        RESULTS_BIN_DIR / "feature_count_trend.png",
-        REV_RES_DIR / "figures" / "feature_count_trend.png",
-        FIGURES_DIR / "fig13_inner_3fold_plsda.png",
-        REV_RES_DIR / "figures" / "fig13_inner_3fold_plsda.png",
+    for bg_flag, out_list in [
+        (
+            True,
+            [
+                FIGURES_DIR / "feature_count_trend.png",
+                RESULTS_BIN_DIR / "feature_count_trend.png",
+                REV_RES_DIR / "figures" / "feature_count_trend.png",
+                FIGURES_DIR / "fig13_inner_3fold_plsda.png",
+                REV_RES_DIR / "figures" / "fig13_inner_3fold_plsda.png",
+            ],
+        ),
+        (
+            False,
+            [
+                FIGURES_DIR / "feature_count_trend_nogrid.png",
+                REV_RES_DIR / "figures" / "feature_count_trend_nogrid.png",
+                FIGURES_DIR / "fig13_inner_3fold_plsda_nogrid.png",
+                REV_RES_DIR / "figures" / "fig13_inner_3fold_plsda_nogrid.png",
+            ],
+        ),
     ]:
-        fig13_3col.savefig(p13, dpi=300)
-    plt.close(fig13_3col)
+        fig13_3col, axes13_3col = plt.subplots(1, 3, figsize=(16.8, 6.2), dpi=300)
+        draw_inner_3fold_columns(axes13_3col, cross_3folds, xlim_left=-3.28, xlim_right=2.05, show_bg_grid=bg_flag)
+        fig13_3col.legend(
+            handles=legend_handles,
+            loc="upper center",
+            bbox_to_anchor=(0.5, 0.995),
+            ncol=3,
+            frameon=False,
+            fontsize=18.0,
+            handlelength=1.8,
+            handleheight=1.1,
+            columnspacing=1.8,
+        )
+        fig13_3col.subplots_adjust(left=0.01, right=0.99, bottom=0.10, top=0.84, wspace=0.045)
+        for p13 in out_list:
+            fig13_3col.savefig(p13, dpi=300)
+        plt.close(fig13_3col)
 
     # 2. 生成双行三列版 (2x3: a Non-Cross Subject k=12, b Cross Subject k=11) 供备选
     within_3folds = get_inner_3fold_selected_50(is_cross_mode=False)
-    fig13_2x3, axes13_2x3 = plt.subplots(2, 3, figsize=(16.8, 9.8), dpi=300)
-    draw_inner_3fold_columns(axes13_2x3[0], within_3folds, xlim_left=-2.35, xlim_right=2.05)
-    draw_inner_3fold_columns(axes13_2x3[1], cross_3folds, xlim_left=-2.35, xlim_right=2.05)
-    axes13_2x3[0][0].text(-0.04, 1.03, "a", transform=axes13_2x3[0][0].transAxes, fontsize=28, va="bottom", ha="right")
-    axes13_2x3[1][0].text(-0.04, 1.03, "b", transform=axes13_2x3[1][0].transAxes, fontsize=28, va="bottom", ha="right")
+    fig13_2x3, axes13_2x3 = plt.subplots(2, 3, figsize=(16.8, 11.6), dpi=300)
+    draw_inner_3fold_columns(axes13_2x3[0], within_3folds, xlim_left=-3.28, xlim_right=2.05, show_bg_grid=True)
+    draw_inner_3fold_columns(axes13_2x3[1], cross_3folds, xlim_left=-3.28, xlim_right=2.05, show_bg_grid=True)
+    axes13_2x3[0][0].text(-0.03, 1.03, "a", transform=axes13_2x3[0][0].transAxes, fontsize=28, va="bottom", ha="right")
+    axes13_2x3[1][0].text(-0.03, 1.03, "b", transform=axes13_2x3[1][0].transAxes, fontsize=28, va="bottom", ha="right")
     fig13_2x3.legend(
         handles=legend_handles,
         loc="upper center",
         bbox_to_anchor=(0.5, 0.995),
         ncol=3,
         frameon=False,
-        fontsize=14,
+        fontsize=18.0,
         handlelength=1.8,
         handleheight=1.1,
-        columnspacing=2.0,
+        columnspacing=1.8,
     )
-    fig13_2x3.subplots_adjust(left=0.03, right=0.985, bottom=0.06, top=0.90, wspace=0.08, hspace=0.24)
+    fig13_2x3.subplots_adjust(left=0.025, right=0.99, bottom=0.06, top=0.90, wspace=0.045, hspace=0.22)
     for p13_2x3 in [
         FIGURES_DIR / "fig13_inner_3fold_plsda_2x3.png",
         REV_RES_DIR / "figures" / "fig13_inner_3fold_plsda_2x3.png",
