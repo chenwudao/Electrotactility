@@ -1,23 +1,21 @@
 """
-终极一键闭环脚本：统一解决 Reviewer #2 质疑点 1、2、3、4
+Multimodal Electrotactile Perception Threshold (PT) Reproduction Script
 ================================================================================
-- 统一外层受试者 5 折划分 (CV Seed = 93，32 名受试者严格按组划分，128 条样本)
-- 统一二分类阈值定义：<= 156.0 μs 为低阈值类 (0)，> 156.0 μs 为高阈值类 (1)
-- 统一容忍带定义：[141.0, 171.0] μs (±15.0 μs)，严格对应审稿人意见 1 & 2
+- Outer 5-fold participant-grouped cross-validation (32 participants, 128 records)
+- Binary classification boundary: <= 156.0 μs (Low PT, 0) vs. > 156.0 μs (High PT, 1)
+- Tolerance band evaluation: [141.0, 171.0] μs (±15.0 μs)
 
-生成并覆盖以下全部正式结果文件：
-1. revision_experiments/results/out_of_fold_predictions.csv
-2. revision_experiments/results/unified_classification_metrics.xlsx
-3. revision_experiments/results/baseline_vs_multimodal_classification.xlsx
-4. revision_experiments/results/margin_band_sample_statistics.xlsx
-5. revision_experiments/results/consistent_confusion_matrices.xlsx
-6. revision_experiments/results/unified_regression_metrics.xlsx
-7. revision_experiments/results/baseline_vs_multimodal_regression.xlsx
-8. revision_experiments/results/gee_clustered_associations.xlsx
-9. revision_experiments/results/feature_sex_adjusted_correlations.xlsx
-10. model/figures/confusion_matrix_raw_unmodified.png
-11. model/figures/confusion_matrices_revision_margin_free.png
-12. model/figures/confusion_matrices_margin_comparison_2x2.png
+Generates the following summary tables in revision_experiments/results/:
+1. out_of_fold_predictions.csv
+2. unified_classification_metrics.xlsx
+3. baseline_vs_multimodal_classification.xlsx
+4. margin_band_sample_statistics.xlsx
+5. consistent_confusion_matrices.xlsx
+6. unified_regression_metrics.xlsx
+7. baseline_vs_multimodal_regression.xlsx
+8. gee_clustered_associations.xlsx
+9. feature_sex_adjusted_correlations.xlsx
+10. gee_fig13_selected_features.xlsx
 """
 
 import os
@@ -271,18 +269,11 @@ def evaluate_binary_predictions(y_true, preds, scores, folds, preds_sex_ref):
 def main():
     t0 = time.time()
     print("=" * 95)
-    print("终极闭环实验：统一解决 Reviewer #2 质疑点 1 (Nested CV)、2 (Margin=15)、3 (聚类与混淆矩阵)、4 (性别基线与GEE)")
+    print("Running Nested CV Classification, Regression, Tolerance Band & GEE Association Pipeline")
     print("=" * 95)
 
     # =========================================================================
-    # STEP 1: 唯一基准协议 —— 双层嵌套交叉验证 (Outer 5-Fold 25/7 + Inner 3-Fold 17/8)
-    # 流程：
-    #   1) 外层 5 折按受试者分组切分 (25~26人外层训练 / 6~7人外层测试，CV Seed = 93)；
-    #   2) 内层 3 折按受试者分组切分 (~17人内层训练 / ~8人内层验证)，在每个内层训练折中
-    #      运行 Multi-Block PLS-VIP + 共线性去重，自动选定最优特征子集配额 q* 与阈值 θ*；
-    #   3) 按内层选定的 (q*, θ*) 在外层训练集上提取并锁定特征子集 S_f（外层不再改动特征）；
-    #   4) 4 个下游分类器 (RandomForest, ExtraTrees, KNN, SVM) 统一在同一套锁定特征 S_f 上
-    #      拟合外层训练集，并在锁死的外层测试集上盲测评估。
+    # STEP 1: Two-Layer Nested Cross-Validation (Outer 5-Fold + Inner 3-Fold)
     # =========================================================================
     CV_SEED = 93
 
@@ -441,7 +432,7 @@ def main():
     df_clf_all.to_excel(OUTPUT_DIR / "baseline_vs_multimodal_classification.xlsx", index=False)
 
     print("\n" + "=" * 95)
-    print("【表 1：质疑点 1 & 4】双层嵌套交叉验证 (Outer 5-Fold + Inner 3-Fold) 下基线与 4 模型对比")
+    print("[Table 1] Nested CV (Outer 5-Fold + Inner 3-Fold) Classification Metrics")
     print("=" * 95)
     print(
         df_clf_all[
@@ -450,7 +441,7 @@ def main():
     )
 
     # =========================================================================
-    # STEP 2: 质疑点 2 & 3 —— [141, 171] μs 容忍带统计、重算基线与无篡改混淆矩阵
+    # STEP 2: [141, 171] μs Tolerance Band Statistics & Confusion Matrices
     # =========================================================================
     n_in_band = int(np.sum(in_margin_band))
     p_in_band = n_in_band / n_samples
@@ -550,50 +541,14 @@ def main():
     df_cm_summary.to_excel(OUTPUT_DIR / "consistent_confusion_matrices.xlsx", index=False)
 
     print("\n" + "=" * 95)
-    print("【表 2：质疑点 2 & 3】[141, 171] μs 容忍带统计与无矛盾原始混淆矩阵核对")
+    print("[Table 2] [141, 171] μs Tolerance Band Statistics & Confusion Matrix Summary")
     print("=" * 95)
     print(margin_stats_df.to_string(index=False))
-    print("\n--- 混淆矩阵汇总表 ---")
+    print("\n--- Confusion Matrix Summary ---")
     print(df_cm_summary.to_string(index=False))
 
-    # 绘制高质量混淆矩阵图 (严格使用 <=156μs 与 >156μs，拒绝篡改原始预测)
-    fig1, ax1 = plt.subplots(figsize=(6.2, 5.2), dpi=300)
-    sns.heatmap(cm_rf_raw, annot=True, fmt="d", cmap="Blues", cbar=False, ax=ax1, annot_kws={"size": 15, "weight": "bold"})
-    ax1.set_title(
-        f"Cross-Subject Leak-Free RF (Margin-Free Primary)\nAccuracy: 72.66% (93/128)\n(11 of 35 errors fall within [141, 171] μs band -> M15 Acc: 81.25%)",
-        fontsize=10.5,
-        pad=12,
-    )
-    ax1.set_xlabel("Predicted Label", fontsize=11)
-    ax1.set_ylabel("True Label", fontsize=11)
-    ax1.set_xticklabels(["Low PT (≤156 μs)", "High PT (>156 μs)"])
-    ax1.set_yticklabels(["Low PT (≤156 μs)", "High PT (>156 μs)"])
-    plt.tight_layout()
-    plt.savefig(FIGURES_DIR / "confusion_matrix_raw_unmodified.png")
-    plt.close(fig1)
-
-    # 对照图：Sex Baseline vs Proposed Leak-Free Multimodal RF (Margin-Free Primary)
-    fig2, axes2 = plt.subplots(1, 2, figsize=(11.2, 4.8), dpi=300)
-    sns.heatmap(cm_sex_raw, annot=True, fmt="d", cmap="Greys", cbar=False, ax=axes2[0], annot_kws={"size": 14, "weight": "bold"})
-    axes2[0].set_title("Demographic Baseline: Sex Only\nMargin-Free Acc: 62.50% (80/128) | M15: 73.44%", fontsize=11, pad=10)
-    axes2[0].set_xlabel("Predicted Label", fontsize=11)
-    axes2[0].set_ylabel("True Label", fontsize=11)
-    axes2[0].set_xticklabels(["Low PT (≤156 μs)", "High PT (>156 μs)"])
-    axes2[0].set_yticklabels(["Low PT (≤156 μs)", "High PT (>156 μs)"])
-
-    sns.heatmap(cm_rf_raw, annot=True, fmt="d", cmap="Blues", cbar=False, ax=axes2[1], annot_kws={"size": 14, "weight": "bold"})
-    axes2[1].set_title("Proposed Leak-Free Multimodal RF (k=11)\nMargin-Free Acc: 72.66% (93/128, p=0.0072) | M15: 81.25%", fontsize=11, pad=10)
-    axes2[1].set_xlabel("Predicted Label", fontsize=11)
-    axes2[1].set_ylabel("True Label", fontsize=11)
-    axes2[1].set_xticklabels(["Low PT (≤156 μs)", "High PT (>156 μs)"])
-    axes2[1].set_yticklabels(["Low PT (≤156 μs)", "High PT (>156 μs)"])
-    plt.tight_layout()
-    plt.savefig(FIGURES_DIR / "confusion_matrices_revision_margin_free.png")
-    plt.savefig(FIGURES_DIR / "confusion_matrices_margin_comparison_2x2.png")
-    plt.close(fig2)
-
     # =========================================================================
-    # STEP 3: 质疑点 4 (连续阈值回归对比) —— 彻底消除跨折拼表与全局归一化泄漏
+    # STEP 3: Continuous PT Regression Evaluation
     # =========================================================================
     def safe_log(values):
         v = np.asarray(values, dtype=float)
@@ -726,12 +681,12 @@ def main():
     df_reg_all.to_excel(OUTPUT_DIR / "baseline_vs_multimodal_regression.xlsx", index=False)
 
     print("\n" + "=" * 95)
-    print("【表 3：质疑点 4 (连续回归)】严格同折划分 + 折内归一化下的基线 vs 多模态回归表现")
+    print("[Table 3] Continuous PT Regression Metrics")
     print("=" * 95)
     print(df_reg_all[["CV_Split", "Model", "R2_Fold", "MAE_Fold (μs)", "MAPE_Fold (%)", "Delta_R2_vs_SexHeight"]].to_string(index=False))
 
     # =========================================================================
-    # STEP 4: 质疑点 3 & 4 —— 受试者聚类 GEE (控制 Sex 与 Sex+Height + BH-FDR)
+    # STEP 4: Participant-Clustered GEE Association Analysis (Sex & Height Adjusted)
     # =========================================================================
     # 合并原论文 11 特征与折内高频初筛特征 (选中 >= 2/5 折)
     high_freq_indices = [idx for idx, cnt in sorted(feat_freq_counter.items(), key=lambda x: (-x[1], x[0])) if cnt >= 2]
@@ -828,27 +783,31 @@ def main():
     df_gee_out.to_excel(OUTPUT_DIR / "gee_clustered_associations.xlsx", index=False)
     df_gee_out.to_excel(OUTPUT_DIR / "feature_sex_adjusted_correlations.xlsx", index=False)
 
-    # 同步导出 Fig. 13 内层三折选出的 19 个不同特征的 GEE 关联结果表
+    # Export GEE association results for the unique features selected in Fig. 13 (Inner Folds 1-3)
     fig13_features = [
+        ("199. Measured Circumference of Neck", "Measured Circumference of Neck", "Global"),
         ("45. FFM% of Right Arm", "Fat Free Mass% of Right Arm", "Global"),
         ("227. SMM/WT", "Skeletal Muscle Mass/Weight", "Global"),
-        ("199. Measured Circumference of Neck", "Measured Circumference of Neck", "Global"),
+        ("42. FFM of Right Arm", "Fat Free Mass of Right Arm", "Global"),
         ("217. SMI", "Skeletal Muscle Index", "Global"),
         ("Phase", "Phase", "Bioelectrical"),
-        ("crestf_u", "v_pre, crestf", "Bioelectrical"),
         ("v1-v2", "Δv", "Bioelectrical"),
         ("LOG_R1", "LOG_R_1", "Bioelectrical"),
+        ("LOG_C2", "LOG_C_2", "Bioelectrical"),
+        ("max_u", "v_pre, max", "Bioelectrical"),
+        ("kur_u", "v_pre, kur", "Bioelectrical"),
+        ("rms_u", "v_pre, rms", "Bioelectrical"),
+        ("kur_u_2", "v_post, kur", "Bioelectrical"),
+        ("crestf_i", "i_pre, crestf", "Bioelectrical"),
+        ("rms_i_2", "i_post, rms", "Bioelectrical"),
+        ("var_i_2", "i_post, var", "Bioelectrical"),
         ("截面积-指长", "A_sur", "Local"),
         ("截面积", "A_sec", "Local"),
-        ("BP_Perimeter_12", "BP_Perimeter", "Local"),
+        ("BP_Eccentricity_2", "BP_Eccentricity", "Local"),
         ("BP_Solidity_13", "BP_Solidity", "Local"),
-        ("GLCM_t_0_d_2_SVD15_465", "GLCM_d2_a0_SVD15", "Local"),
-        ("LBP_r3_pt_18_343", "LBP_r3_p18", "Local"),
-        ("LBP_r3_pt_76_401", "LBP_r3_p76", "Local"),
+        ("BP_wt_norm_moments_14__79", "BP_wt_norm_moments_14", "Local"),
+        ("LBP_r3_pt_1_326", "LBP_r3_p1", "Local"),
         ("ZER_r0_pt_17_18", "ZER_r0_p17", "Local"),
-        ("ZER_r1_pt_8_34", "ZER_r1_p8", "Local"),
-        ("ZER_r3_pt_6_82", "ZER_r3_p6", "Local"),
-        ("ZER_r3_pt_4_80", "ZER_r3_p4", "Local"),
     ]
     f13_rows = []
     height_sc = StandardScaler().fit_transform(height.reshape(-1, 1)).ravel()
@@ -892,7 +851,7 @@ def main():
     df_f13_gee.to_excel(OUTPUT_DIR / "gee_fig13_selected_features.xlsx", index=False)
 
     print("\n" + "=" * 95)
-    print("【表 4：质疑点 3 & 4】受试者聚类 GEE 回归 (控制 Sex 与 Sex+Height + FDR 校正)")
+    print("[Table 4] Participant-Clustered GEE Associations (Sex & Sex+Height Adjusted)")
     print("=" * 95)
     print(
         df_gee_out[
@@ -900,7 +859,7 @@ def main():
         ].to_string(index=False)
     )
 
-    print(f"\n✓ 全部闭环表格与无篡改混淆矩阵已生成完毕，总耗时: {time.time() - t0:.2f} 秒")
+    print(f"\n✓ All tables generated successfully in {time.time() - t0:.2f} s")
 
 
 if __name__ == "__main__":

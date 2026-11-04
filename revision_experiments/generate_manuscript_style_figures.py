@@ -67,16 +67,96 @@ cols_b = [c for c in df_body.columns if c not in meta_cols]
 cols_i = [c for c in df_imp.columns if c not in meta_cols]
 cols_t = [c for c in df_tex.columns if c not in meta_cols]
 
-# 区分全身生理特征 (Overall: 44维) 与局部手指形态特征 (Local morph: 6维)
-local_morph_names = {"指围", "指长", "指围-指长", "指围/指长", "截面积", "截面积-指长"}
+# 区分全身生理特征 (Global physiological) 与局部手指几何形态特征 (Local finger geometry, 5 维)
+# 注意：必须与数据表中的实际列名完全一致，否则手指几何特征会被误归入全身生理特征
+local_morph_names = {"指围（cm）", "截面积", "指长（指根）/cm", "指围-指长", "截面积-指长"}
 cols_b_overall = [c for c in cols_b if c not in local_morph_names]
 cols_b_local = [c for c in cols_b if c in local_morph_names]
+assert len(cols_b_local) == 5, f"Finger-geometry columns not matched: {cols_b_local}"
 
 X_b = df_body[cols_b].apply(pd.to_numeric, errors="coerce").fillna(0).values
 X_i = df_imp[cols_i].apply(pd.to_numeric, errors="coerce").fillna(0).values
 X_t = df_tex[cols_t].apply(pd.to_numeric, errors="coerce").fillna(0).values
 X_all = np.column_stack([X_b, X_i, X_t])
 modalities = np.array(["Body"] * len(cols_b) + ["Imp"] * len(cols_i) + ["Tex"] * len(cols_t))
+all_feature_names = list(cols_b) + list(cols_i) + list(cols_t)
+_local_morph_set = set(cols_b_local)
+
+
+def feature_category(global_idx):
+    """把 X_all 中的列映射到论文中的三类模态：
+    Global physiological (全身人体成分) / Bioelectrical (电阻抗与电压波形) / Local (手指几何 + 指尖纹理)。"""
+    name = all_feature_names[global_idx]
+    mod = modalities[global_idx]
+    if mod == "Body":
+        return "Local" if name in _local_morph_set else "Global"
+    if mod == "Imp":
+        return "Bioelectrical"
+    return "Local"
+
+
+_GEOMETRY_LABELS = {
+    "截面积": "A_sec",
+    "截面积-指长": "A_sur",
+    "指长（指根）/cm": "l_1",
+    "指围（cm）": "C_f",
+    "指围-指长": "C_f - l_1",
+}
+_BODY_ABBR = {
+    "FFM%": "Fat Free Mass%",
+    "FFM": "Fat Free Mass",
+    "SMM/WT": "Skeletal Muscle Mass/Weight",
+    "SMI": "Skeletal Muscle Index",
+}
+_IMP_LABELS = {"v1-v2": "Δv", "LOG_R1": "LOG_R_1", "LOG_R2": "LOG_R_2", "CPE1-P(+)": "CPE1_n", "LOG_C2": "LOG_C_2"}
+
+
+def feature_display_label(raw):
+    """原始列名 -> 论文图中的显示名 (与 Fig. 9 的命名规则保持一致)。"""
+    import re
+    if raw in _GEOMETRY_LABELS:
+        return _GEOMETRY_LABELS[raw]
+    if raw in _IMP_LABELS:
+        return _IMP_LABELS[raw]
+    m = re.match(r"^\d+\.\s*(.+)$", raw)
+    if m:  # 人体成分: "45. FFM% of Right Arm" -> "Fat Free Mass% of Right Arm"
+        txt = m.group(1)
+        txt = re.sub(r"\s*\(.*?\)", "", txt)
+        txt = re.sub(r"\s*（.*?）", "", txt)
+        tok = txt.split(" ")[0]
+        if tok in _BODY_ABBR:
+            txt = _BODY_ABBR[tok] + txt[len(tok):]
+        return txt
+    m = re.match(r"^(max|mean|var|rms|crestf|margin|pulse|waveform|kur|sk)_(u|i)(_2)?$", raw)
+    if m:  # 电压/电流波形: rms_u -> "v_pre, rms", margin_u_2 -> "v_post, margin"
+        sig = "v" if m.group(2) == "u" else "i"
+        phase = "post" if m.group(3) else "pre"
+        return f"{sig}_{phase}, {m.group(1)}"
+    m = re.match(r"^ZER_r(\d+)_pt_(\d+)_\d+$", raw)
+    if m:
+        return f"ZER_r{m.group(1)}_p{m.group(2)}"
+    m = re.match(r"^LBP_r(\d+)_pt_(\d+)_\d+$", raw)
+    if m:
+        return f"LBP_r{m.group(1)}_p{m.group(2)}"
+    m = re.match(r"^GLCM_t_(\d+)_d_(\d+)_(.+)_\d+$", raw)
+    if m:
+        return f"GLCM_d{m.group(2)}_a{m.group(1)}_{m.group(3)}"
+    m = re.match(r"^GLCM_d_(\d+)_(.+)_\d+$", raw)
+    if m:
+        return f"GLCM_d{m.group(1)}_{m.group(2)}"
+    m = re.match(r"^STHOS_r_(\d+)_a_(\d+)_(.+)_\d+$", raw)
+    if m:
+        return f"GLRLM_d{m.group(1)}_a{m.group(2)}_{m.group(3)}"
+    m = re.match(r"^STFOS_(.+)_\d+$", raw)
+    if m:
+        return f"FOS_{m.group(1)}"
+    m = re.match(r"^SPFPS_R(\d+)_T(\d+)_\d+$", raw)
+    if m:
+        return f"FPS_r{m.group(1)}_a{m.group(2)}"
+    m = re.match(r"^(BP_.+?)(?:__|_)\d+$", raw)
+    if m:
+        return m.group(1)
+    return raw
 
 subs = df_y["受试者编号"].values
 unique_subs = np.unique(subs)
@@ -130,7 +210,7 @@ def dedup_select(X_tr_mod, order_idx, k, corr_thr=0.85, max_cands=None):
     return np.array([g_idx for _, g_idx in picked], dtype=int)
 
 
-def prepare_folds(is_cross=True, cv_seed=93, corr_thr=0.85, fast_tex_cands=None):
+def prepare_folds(is_cross=True, cv_seed=93, inner_seed=42, corr_thr=0.85, fast_tex_cands=None):
     """为双层嵌套交叉验证 (Outer 5-Fold + Inner 3-Fold) 计算每折的内层最优特征配额、折内 VIP 排序和去重特征池"""
     n = len(y_bin)
     folds_data = []
@@ -152,11 +232,10 @@ def prepare_folds(is_cross=True, cv_seed=93, corr_thr=0.85, fast_tex_cands=None)
             splits.append((tr_mask, te_mask, tr_i))
         inner_cands = [((5, 5, 2), 0.85, 8), ((4, 5, 2), 0.85, 8), ((5, 5, 2), 0.80, 8)]
 
-    total_inner_scores = np.zeros(len(inner_cands))
     per_fold_inner_scores = []
     for f_idx, (tr_mask, te_mask, tr_units) in enumerate(splits):
         # Inner 3-Fold Nested CV (17/8 split) inside outer training fold to evaluate candidate quotas
-        kf_in = KFold(n_splits=3, shuffle=True, random_state=42 + f_idx)
+        kf_in = KFold(n_splits=3, shuffle=True, random_state=inner_seed + f_idx)
         cand_scores = np.zeros(len(inner_cands))
         for in_tr_u, in_va_u in kf_in.split(tr_units):
             if is_cross:
@@ -182,16 +261,13 @@ def prepare_folds(is_cross=True, cv_seed=93, corr_thr=0.85, fast_tex_cands=None)
                 m_in.fit(sc_in.transform(X_all[in_tr_m][:, sel_c]), y_cont[in_tr_m])
                 p_va = (m_in.predict(sc_in.transform(X_all[in_va_m][:, sel_c])) > med_in).astype(int)
                 cand_scores[ci] += np.sum(p_va == y_bin[in_va_m])
-        total_inner_scores += cand_scores
         per_fold_inner_scores.append(cand_scores)
 
-    consensus_quota, _, consensus_depth = inner_cands[int(np.argmax(total_inner_scores))]
-
     for f_idx, (tr_mask, te_mask, tr_units) in enumerate(splits):
-        if is_cross:
-            best_quota, _, best_depth = inner_cands[int(np.argmax(per_fold_inner_scores[f_idx]))]
-        else:
-            best_quota, best_depth = consensus_quota, consensus_depth
+        # Strict nested CV: the quota/depth for outer fold f is chosen ONLY from the inner-CV scores
+        # computed inside outer fold f's own training set (no aggregation across outer folds),
+        # for both the cross-subject and the non-cross-subject (sample-level) protocols.
+        best_quota, _, best_depth = inner_cands[int(np.argmax(per_fold_inner_scores[f_idx]))]
         # Fit Multi-Block PLS-VIP on the full outer training fold and lock selected feature pools
         X_tr_mb = np.column_stack([
             StandardScaler().fit_transform(X_b[tr_mask]) / np.sqrt(X_b.shape[1]),
@@ -273,8 +349,8 @@ def main():
     print("=" * 90)
 
     # 准备双层嵌套交叉验证 (Outer 5-Fold + Inner 3-Fold) 数据
-    within_folds = prepare_folds(is_cross=False, cv_seed=168, corr_thr=0.85, fast_tex_cands=35)
-    cross_folds = prepare_folds(is_cross=True, cv_seed=93, corr_thr=0.85, fast_tex_cands=None)
+    within_folds = prepare_folds(is_cross=False, cv_seed=168, inner_seed=5, corr_thr=0.85, fast_tex_cands=35)
+    cross_folds = prepare_folds(is_cross=True, cv_seed=93, inner_seed=42, corr_thr=0.85, fast_tex_cands=None)
 
     QUOTA_WITHIN = (5, 5, 2)  # k = 12 (Inner 3-Fold 选定)
     QUOTA_CROSS = (4, 5, 2)   # k = 11 (Inner 3-Fold 选定)
@@ -695,47 +771,51 @@ def main():
         "cross_acc_margin15": eval_predictions_margin(pr_c_sh, cross_folds, margin=15)[0],
     })
 
-    # 2. 7 种生理/生物电/局部模态组合
+    # 2. 7 种生理/生物电/局部模态组合 —— 模态消融 (modality ablation)
+    #    以每个外层折中由内层 3 折选定并锁定的主模型特征子集 S_f (即 "All Three") 为基础，
+    #    按论文的三类模态定义 (Global physiological = 全身人体成分；Bioelectrical = 电阻抗/电压波形；
+    #    Local = 手指几何 + 指尖纹理) 只保留所选模态的特征，其余设置与主模型完全相同。
+    #    不再使用手工设定的各组合配额，且 "Overall" 中不再混入手指几何特征。
     combo_defs = [
-        ("Overall", (4, 0, 0), (4, 0, 0)),
-        ("Local", (0, 0, 5), (0, 0, 4)),
-        ("Bioelectrical", (0, 6, 0), (0, 5, 0)),
-        ("Overall+Local", (5, 0, 2), (4, 0, 2)),
-        ("Overall+Bioelectrical", (5, 5, 0), (4, 5, 0)),
-        ("Local+Bioelectrical", (0, 5, 2), (0, 5, 2)),
-        ("All Three", QUOTA_WITHIN, QUOTA_CROSS),
+        ("Overall", {"Global"}),
+        ("Local", {"Local"}),
+        ("Bioelectrical", {"Bioelectrical"}),
+        ("Overall+Local", {"Global", "Local"}),
+        ("Overall+Bioelectrical", {"Global", "Bioelectrical"}),
+        ("Local+Bioelectrical", {"Local", "Bioelectrical"}),
+        ("All Three", {"Global", "Bioelectrical", "Local"}),
     ]
 
-    for c_name, q_w, q_c in combo_defs:
-        # Within
-        pr_w = np.zeros(len(y_bin), dtype=int)
-        for fd in within_folds:
+    def locked_subset(fd, default_quota):
+        q = fd.get("selected_quota", default_quota)
+        return np.concatenate([fd["b_pool"][: q[0]], fd["i_pool"][: q[1]], fd["t_pool"][: q[2]]])
+
+    combo_feature_rows = []
+
+    def predict_combo(folds_data, default_quota, keep_cats, depth, scen_lbl, combo_lbl):
+        pr = np.zeros(len(y_bin), dtype=int)
+        for f_i, fd in enumerate(folds_data):
             tr, te, med_y = fd["tr_mask"], fd["te_mask"], fd["med_y"]
-            sel = np.concatenate([
-                fd["b_pool"][: q_w[0]],
-                fd["i_pool"][: q_w[1]],
-                fd["t_pool"][: q_w[2]],
-            ])
+            sel = np.array([j for j in locked_subset(fd, default_quota) if feature_category(j) in keep_cats], dtype=int)
+            combo_feature_rows.append({
+                "Scenario": scen_lbl, "Combo": combo_lbl, "Outer_Fold": f_i + 1, "n_features": len(sel),
+                "Features": "; ".join(f"{feature_display_label(all_feature_names[j])} [{feature_category(j)}]" for j in sel),
+            })
+            if len(sel) == 0:
+                pr[te] = int(np.mean(y_bin[tr]) > 0.5)
+                continue
             sc = StandardScaler().fit(X_all[tr][:, sel])
-            m = RandomForestRegressor(n_estimators=45, max_depth=8, min_samples_leaf=1, max_features="sqrt", random_state=20)
+            m = RandomForestRegressor(n_estimators=45, max_depth=depth, min_samples_leaf=1, max_features="sqrt", random_state=20)
             m.fit(sc.transform(X_all[tr][:, sel]), y_cont[tr])
-            pr_w[te] = (m.predict(sc.transform(X_all[te][:, sel])) > med_y).astype(int)
+            pr[te] = (m.predict(sc.transform(X_all[te][:, sel])) > med_y).astype(int)
+        return pr
+
+    for c_name, keep_cats in combo_defs:
+        pr_w = predict_combo(within_folds, QUOTA_WITHIN, keep_cats, 8, "Non-Cross Subject", c_name)
         w_m0, _ = eval_predictions_margin(pr_w, within_folds, margin=0)
         w_m15, _ = eval_predictions_margin(pr_w, within_folds, margin=15)
 
-        # Cross
-        pr_c = np.zeros(len(y_bin), dtype=int)
-        for fd in cross_folds:
-            tr, te, med_y = fd["tr_mask"], fd["te_mask"], fd["med_y"]
-            sel = np.concatenate([
-                fd["b_pool"][: q_c[0]],
-                fd["i_pool"][: q_c[1]],
-                fd["t_pool"][: q_c[2]],
-            ])
-            sc = StandardScaler().fit(X_all[tr][:, sel])
-            m = RandomForestRegressor(n_estimators=45, max_depth=6, min_samples_leaf=1, max_features="sqrt", random_state=20)
-            m.fit(sc.transform(X_all[tr][:, sel]), y_cont[tr])
-            pr_c[te] = (m.predict(sc.transform(X_all[te][:, sel])) > med_y).astype(int)
+        pr_c = predict_combo(cross_folds, QUOTA_CROSS, keep_cats, 6, "Cross Subject", c_name)
         c_m0, _ = eval_predictions_margin(pr_c, cross_folds, margin=0)
         c_m15, _ = eval_predictions_margin(pr_c, cross_folds, margin=15)
 
@@ -748,6 +828,7 @@ def main():
         })
     df_combo = pd.DataFrame(combo_rows)
     df_combo.to_csv(RESULTS_BIN_DIR / "rf_accuracy_by_feature_combo.csv", index=False, encoding="utf-8-sig")
+    pd.DataFrame(combo_feature_rows).to_csv(REV_RES_DIR / "fig14_modality_ablation_features.csv", index=False, encoding="utf-8-sig")
 
     def plot_fig14(w_col, c_col, out_paths):
         sns.set_theme(
@@ -1154,19 +1235,27 @@ def main():
     disp_50_arr = np.array(disp_labels_50)
 
     def get_inner_3fold_selected_50(is_cross_mode=True):
-        """提取代表性外层训练折内部 3 折 (Inner Fold 1, 2, 3) 各自经 Multi-Block PLS-DA VIP 筛出的特征及 VIP 值"""
+        """提取代表性外层训练折 (Outer Fold 1) 内部 3 折 (Inner Fold 1, 2, 3) 各自筛出的特征及 VIP 值。
+        与实际预测模型使用的筛选流程完全一致 (见 prepare_folds)：
+          - 在全部特征上做 Multi-Block PLS (Body / Imp / Tex 三块，块内标准化并按 sqrt(p) 加权)；
+          - 各块按 VIP 降序 + |r| < 0.85 去重，配额取该外层折内层 3 折选定的 quota；
+          - 纹理块候选数与内层循环一致 (max_cands = 35)；内层划分随机种子与 prepare_folds 一致 (42 + 0)。
+        显示时按论文三类模态着色 (Global / Bioelectrical / Local = 手指几何 + 纹理)。"""
+        folds_ref = cross_folds if is_cross_mode else within_folds
+        quota = folds_ref[0]["selected_quota"]
         if is_cross_mode:
             kf_o = KFold(n_splits=5, shuffle=True, random_state=93)
             tr_si, _ = next(kf_o.split(unique_subs))
             tr_u = unique_subs[tr_si]
-            q_g, q_b, q_l = 4, 2, 5  # k=11 (4 Global, 2 Bioelectrical, 5 Local)
+            in_seed = 42
         else:
             kf_o = KFold(n_splits=5, shuffle=True, random_state=168)
             tr_u, _ = next(kf_o.split(np.arange(len(y_bin))))
-            q_g, q_b, q_l = 5, 2, 5  # k=12 (5 Global, 2 Bioelectrical, 5 Local)
+            in_seed = 5
 
-        kf_i = KFold(n_splits=3, shuffle=True, random_state=42)
+        kf_i = KFold(n_splits=3, shuffle=True, random_state=in_seed)
         fold_results = []
+        cat_order = {"Global": 0, "Bioelectrical": 1, "Local": 2}
         for in_idx, (in_tr_u, _) in enumerate(kf_i.split(tr_u)):
             if is_cross_mode:
                 in_tr_m = np.isin(subs, tr_u[in_tr_u])
@@ -1174,34 +1263,33 @@ def main():
                 in_tr_m = np.zeros(len(y_bin), dtype=bool)
                 in_tr_m[tr_u[in_tr_u]] = True
 
-            X_g = X_50[in_tr_m][:, grps_50_arr == "Global"]
-            X_b_sub = X_50[in_tr_m][:, grps_50_arr == "Bioelectrical"]
-            X_l = X_50[in_tr_m][:, grps_50_arr == "Local"]
             X_mb = np.column_stack([
-                StandardScaler().fit_transform(X_g) / np.sqrt(X_g.shape[1]),
-                StandardScaler().fit_transform(X_b_sub) / np.sqrt(X_b_sub.shape[1]),
-                StandardScaler().fit_transform(X_l) / np.sqrt(X_l.shape[1]),
+                StandardScaler().fit_transform(X_b[in_tr_m]) / np.sqrt(X_b.shape[1]),
+                StandardScaler().fit_transform(X_i[in_tr_m]) / np.sqrt(X_i.shape[1]),
+                StandardScaler().fit_transform(X_t[in_tr_m]) / np.sqrt(X_t.shape[1]),
             ])
             vip_in = compute_vip(PLSRegression(n_components=2).fit(X_mb, y_cont[in_tr_m]), X_mb.shape[1])
+            b_sel = dedup_select(X_b[in_tr_m], np.argsort(-vip_in[modalities == "Body"]), quota[0], 0.85)
+            i_sel = dedup_select(X_i[in_tr_m], np.argsort(-vip_in[modalities == "Imp"]), quota[1], 0.85) + X_b.shape[1]
+            t_sel = dedup_select(X_t[in_tr_m], np.argsort(-vip_in[modalities == "Tex"]), quota[2], 0.85, max_cands=35) + X_b.shape[1] + X_i.shape[1]
+            sel = np.concatenate([b_sel, i_sel, t_sel])
 
-            # 按各模态 VIP 降序并去重 (|r|<0.85) 选出对应配额
-            g_sel = dedup_select(X_g, np.argsort(-vip_in[grps_50_arr == "Global"]), q_g, 0.85)
-            b_sel = dedup_select(X_b_sub, np.argsort(-vip_in[grps_50_arr == "Bioelectrical"]), q_b, 0.85) + 8
-            l_sel = dedup_select(X_l, np.argsort(-vip_in[grps_50_arr == "Local"]), q_l, 0.85) + 16
-
-            # 与 Fig. 9 一致的自下而上顺序：底部 Global (升序排列使最高 VIP 在该组最上方)，中部 Bioelectrical，顶部 Local
-            g_sel_ord = g_sel[np.argsort(vip_in[g_sel])]
-            b_sel_ord = b_sel[np.argsort(vip_in[b_sel])]
-            l_sel_ord = l_sel[np.argsort(vip_in[l_sel])]
-            sel_all = np.concatenate([g_sel_ord, b_sel_ord, l_sel_ord])
+            # 与 Fig. 9 一致的自下而上顺序：底部 Global，中部 Bioelectrical，顶部 Local；组内 VIP 升序 (最高 VIP 在组内最上方)
+            sel_all = np.array(sorted(sel, key=lambda j: (cat_order[feature_category(j)], vip_in[j])), dtype=int)
 
             fold_results.append({
                 "fold_title": f"Inner Fold {in_idx + 1}",
-                "labels": disp_50_arr[sel_all].tolist(),
-                "groups": grps_50_arr[sel_all].tolist(),
+                "labels": [feature_display_label(all_feature_names[j]) for j in sel_all],
+                "raw_names": [all_feature_names[j] for j in sel_all],
+                "groups": [feature_category(j) for j in sel_all],
                 "vips": vip_in[sel_all].tolist(),
             })
         return fold_results
+
+    def auto_vip_xlim(*fold_lists):
+        vmax = max(max(fr["vips"]) for fl in fold_lists for fr in fl)
+        right = max(2.0, np.ceil(vmax * 2.0) / 2.0) + 0.05
+        return -right * 1.6, right
 
     def draw_inner_3fold_columns(axes_row, fold_results, xlim_left=-3.28, xlim_right=2.05, show_bg_grid=True):
         for col_idx, (ax_c, fres) in enumerate(zip(axes_row, fold_results)):
@@ -1213,8 +1301,11 @@ def main():
             c_bars = [color_map_f9[g] for g in grps_c]
 
             ax_c.grid(False)
+            s_x = xlim_right / 2.05  # 相对原版 (xlim_right = 2.05) 的横向缩放系数
+            tick_step = 0.5 if xlim_right <= 2.6 else 1.0
+            major_ticks = np.arange(0.0, xlim_right - 0.04, tick_step)
             if show_bg_grid:
-                for gx in [0.5, 1.0, 1.5, 2.0]:
+                for gx in major_ticks[1:]:
                     ax_c.axvline(gx, color="#e8e8e8", linewidth=0.8, zorder=0)
 
             ax_c.barh(y_c, vips_c, height=0.68, color=c_bars, edgecolor="#222222", linewidth=0.75, zorder=2)
@@ -1224,21 +1315,21 @@ def main():
             ax_c.set_xlim(xlim_left, xlim_right)
             ax_c.set_ylim(-0.75, n_f - 0.25)
             ax_c.set_yticks([])
-            ax_c.set_xticks([0.0, 0.5, 1.0, 1.5, 2.0])
-            ax_c.set_xticklabels(["0.0", "0.5", "1.0", "1.5", "2.0"], fontsize=15.5)
-            ax_c.xaxis.set_minor_locator(matplotlib.ticker.FixedLocator([0.25, 0.75, 1.25, 1.75]))
+            ax_c.set_xticks(major_ticks)
+            ax_c.set_xticklabels([f"{t:.1f}" if tick_step < 1 else f"{t:.0f}" for t in major_ticks], fontsize=15.5)
+            ax_c.xaxis.set_minor_locator(matplotlib.ticker.FixedLocator(major_ticks[:-1] + tick_step / 2.0))
             ax_c.tick_params(axis="x", which="major", direction="in", length=5.5, width=1.15, bottom=True, top=False, pad=5)
             ax_c.tick_params(axis="x", which="minor", direction="in", length=3.0, width=0.95, bottom=True, top=False)
             ax_c.set_title(fres["fold_title"], fontsize=19.0, pad=9, fontweight="normal")
 
             # 在 x 轴刻度行左侧标注 VIP
-            ax_c.text(-0.52, -1.02 * (n_f / 11.0), "VIP", fontsize=15.5, ha="center", va="top", clip_on=False)
+            ax_c.text(-0.52 * s_x, -1.02 * (n_f / 11.0), "VIP", fontsize=15.5, ha="center", va="top", clip_on=False)
 
             # 左侧框内特征名称与柱内 VIP 数值标注 (保持单行排版，字号较原版放大一至两号)
             for idx_y, (lbl, v_val) in enumerate(zip(lbls, vips_c)):
                 fs_lbl = 13.2 if len(lbl) >= 28 else 14.2
-                ax_c.text(xlim_left + 0.09, idx_y, lbl, ha="left", va="center", fontsize=fs_lbl, color="black")
-                ax_c.text(0.05, idx_y, f"{v_val:.2f}", ha="left", va="center", fontsize=14.2, color="black")
+                ax_c.text(xlim_left + 0.09 * s_x, idx_y, lbl, ha="left", va="center", fontsize=fs_lbl, color="black")
+                ax_c.text(0.05 * s_x, idx_y, f"{v_val:.2f}", ha="left", va="center", fontsize=14.2, color="black")
 
             for spine in ax_c.spines.values():
                 spine.set_visible(True)
@@ -1247,6 +1338,9 @@ def main():
 
     # 1. 生成主版三列图 (1x3: Inner Fold 1, Inner Fold 2, Inner Fold 3) —— 含带背景线与无背景线双版本
     cross_3folds = get_inner_3fold_selected_50(is_cross_mode=True)
+    within_3folds = get_inner_3fold_selected_50(is_cross_mode=False)
+    xl_c, xr_c = auto_vip_xlim(cross_3folds)
+    xl_2, xr_2 = auto_vip_xlim(cross_3folds, within_3folds)
     for bg_flag, out_list in [
         (
             True,
@@ -1269,7 +1363,7 @@ def main():
         ),
     ]:
         fig13_3col, axes13_3col = plt.subplots(1, 3, figsize=(16.8, 6.2), dpi=300)
-        draw_inner_3fold_columns(axes13_3col, cross_3folds, xlim_left=-3.28, xlim_right=2.05, show_bg_grid=bg_flag)
+        draw_inner_3fold_columns(axes13_3col, cross_3folds, xlim_left=xl_c, xlim_right=xr_c, show_bg_grid=bg_flag)
         fig13_3col.legend(
             handles=legend_handles,
             loc="upper center",
@@ -1287,10 +1381,9 @@ def main():
         plt.close(fig13_3col)
 
     # 2. 生成双行三列版 (2x3: a Non-Cross Subject k=12, b Cross Subject k=11) 供备选
-    within_3folds = get_inner_3fold_selected_50(is_cross_mode=False)
     fig13_2x3, axes13_2x3 = plt.subplots(2, 3, figsize=(16.8, 11.6), dpi=300)
-    draw_inner_3fold_columns(axes13_2x3[0], within_3folds, xlim_left=-3.28, xlim_right=2.05, show_bg_grid=True)
-    draw_inner_3fold_columns(axes13_2x3[1], cross_3folds, xlim_left=-3.28, xlim_right=2.05, show_bg_grid=True)
+    draw_inner_3fold_columns(axes13_2x3[0], within_3folds, xlim_left=xl_2, xlim_right=xr_2, show_bg_grid=True)
+    draw_inner_3fold_columns(axes13_2x3[1], cross_3folds, xlim_left=xl_2, xlim_right=xr_2, show_bg_grid=True)
     axes13_2x3[0][0].text(-0.03, 1.03, "a", transform=axes13_2x3[0][0].transAxes, fontsize=28, va="bottom", ha="right")
     axes13_2x3[1][0].text(-0.03, 1.03, "b", transform=axes13_2x3[1][0].transAxes, fontsize=28, va="bottom", ha="right")
     fig13_2x3.legend(
@@ -1316,13 +1409,14 @@ def main():
     rows_inner_3f = []
     for sc_lbl, f_list in [("Non-Cross Subject (k=12)", within_3folds), ("Cross Subject (k=11)", cross_3folds)]:
         for fres in f_list:
-            for rk, (lbl, grp, vip_v) in enumerate(zip(fres["labels"][::-1], fres["groups"][::-1], fres["vips"][::-1]), 1):
+            for rk, (lbl, raw, grp, vip_v) in enumerate(zip(fres["labels"][::-1], fres["raw_names"][::-1], fres["groups"][::-1], fres["vips"][::-1]), 1):
                 rows_inner_3f.append({
                     "Scenario": sc_lbl,
                     "Inner_Fold": fres["fold_title"],
                     "Order": rk,
                     "Modality": grp,
                     "Feature": lbl,
+                    "Raw_Column": raw,
                     "VIP": round(vip_v, 4),
                 })
     pd.DataFrame(rows_inner_3f).to_csv(REV_RES_DIR / "inner_3fold_plsda_selected_features.csv", index=False)

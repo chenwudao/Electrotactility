@@ -27,3 +27,6 @@ Manuscript.docx
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Internal documents (handover guides, response drafts) - kept local only
+docs/

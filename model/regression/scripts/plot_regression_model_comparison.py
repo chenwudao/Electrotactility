@@ -20,7 +20,7 @@ FEAT_FILE = os.path.join(
     BASE_DIR,
     r"feature-enginnering/linear-features/experiment1.0-50features/X_结合相关互相关_spe_0.9_rfr_50.xlsx",
 )
-LABEL_FILE = os.path.join(BASE_DIR, r"feature-enginnering/linear-features/experiment1.0-50features/Y.xlsx")
+LABEL_FILE = os.path.join(BASE_DIR, r"dataset/Y.xlsx")
 
 WITHIN_RESULTS = os.path.join(RESULTS_DIR, "model_comparison_regression_within.xlsx")
 CROSS_RESULTS = os.path.join(RESULTS_DIR, "model_comparison_regression_cross.xlsx")
@@ -30,12 +30,6 @@ OUTPUT_MAPE_PNG = os.path.join(RESULTS_DIR, "regression_model_comparison_mape.pn
 OUTPUT_XLSX = os.path.join(RESULTS_DIR, "regression_model_comparison_with_baseline.xlsx")
 
 MODEL_ORDER = ["RandomForest", "ExtraTrees", "AdaBoost", "CatBoost", "Baseline"]
-OVERRIDE_R2_NON_CROSS = 0.50
-OVERRIDE_R2_CROSS = 0.36
-OVERRIDE_MAE_NON_CROSS = 41.1277
-OVERRIDE_MAE_CROSS = 48.2365
-OVERRIDE_MAPE_NON_CROSS = 0.2642
-OVERRIDE_MAPE_CROSS = 0.3184
 
 WITHIN_KF_STATE = 53
 CROSS_KF_STATE = 427
@@ -161,14 +155,8 @@ def main():
     within_df = order_and_filter(within_df)
     cross_df = order_and_filter(cross_df)
 
-    if "RandomForest" in within_df["model"].values:
-        within_df.loc[within_df["model"] == "RandomForest", "r2_mean"] = OVERRIDE_R2_NON_CROSS
-        within_df.loc[within_df["model"] == "RandomForest", "mae_mean"] = OVERRIDE_MAE_NON_CROSS
-        within_df.loc[within_df["model"] == "RandomForest", "mape_mean"] = OVERRIDE_MAPE_NON_CROSS
-    if "RandomForest" in cross_df["model"].values:
-        cross_df.loc[cross_df["model"] == "RandomForest", "r2_mean"] = OVERRIDE_R2_CROSS
-        cross_df.loc[cross_df["model"] == "RandomForest", "mae_mean"] = OVERRIDE_MAE_CROSS
-        cross_df.loc[cross_df["model"] == "RandomForest", "mape_mean"] = OVERRIDE_MAPE_CROSS
+    # All plotted metrics are taken directly from the cross-validated results produced by
+    # model_comparison_regression_within.py / model_comparison_regression_cross.py (no manual overrides).
 
     combined_df = within_df.merge(
         cross_df,

@@ -15,7 +15,7 @@ The repository supports two primary predictive tasks and one covariate-adjusted 
 Because the raw multimodal experimental recordings (`5_实验数据/`, approximately **2.7 GB** in total) exceed GitHub's file size limits, the complete raw dataset is hosted on **Google Drive**:
 
 - 🔗 **Google Drive Raw Dataset (`5_实验数据/`, ~2.7 GB)**:  
-  **[👉 Download Raw Experimental Dataset from Google Drive](https://drive.google.com/drive/folders/YOUR_GOOGLE_DRIVE_FOLDER_ID)** *(Replace `YOUR_GOOGLE_DRIVE_FOLDER_ID` with the final Google Drive folder link once upload completes)*
+  **[👉 Download Raw Experimental Dataset from Google Drive](https://drive.google.com/file/d/1VmnDQZH3BVMRZHEvCR3dyZh4Ty7tWfPA/view?usp=drive_link)**
 
 ### Contents of `5_实验数据/` (~2.7 GB):
 ```text
@@ -45,26 +45,23 @@ Electrotactility/
 │  ├─ generate_manuscript_style_figures.py            # Master script: Generates manuscript Fig. 9 – Fig. 15 (300 DPI)
 │  └─ results/                                        # Generated Excel/CSV tables, GEE reports & 300 DPI figures
 │     ├─ gee_clustered_associations.xlsx              # GEE results (unadjusted, Sex-adj, Sex+Height-adj, 95% CI, FDR q)
-│     ├─ gee_fig13_selected_features.xlsx             # GEE results for the 19 features selected in Inner Folds 1–3
+│     ├─ gee_fig13_selected_features.xlsx             # GEE results for the features selected in Inner Folds 1–3
 │     ├─ unified_classification_metrics.xlsx          # Nested CV classification accuracy, F1, ROC-AUC & McNemar tests
 │     ├─ unified_regression_metrics.xlsx              # Continuous PT regression metrics (R², MAE, MAPE)
 │     ├─ consistent_confusion_matrices.xlsx           # Raw unmodified 2×2 confusion matrices & tolerance band breakdown
 │     ├─ margin_band_sample_statistics.xlsx           # Sample statistics within the [141, 171] μs (±15 μs) tolerance band
 │     ├─ inner_3fold_plsda_selected_features.csv      # Feature lists & VIP scores selected in Inner Folds 1–3
 │     ├─ out_of_fold_predictions.csv                  # Sample-level out-of-fold predictions across all evaluated models
-│     ├─ GEE_性别身高关联分析数据与说明/               # Packaged GEE summary tables & manuscript documentation
 │     └─ figures/                                     # Output directory for Fig. 9 – Fig. 15
 ├─ model/                                             # Task-specific modeling results & figure outputs
 │  ├─ binary-class/results/                           # Binary classification CSV/PNG summaries
 │  ├─ regression/                                     # Continuous PT regression scripts & model comparison results
 │  │  ├─ non-cross-regression/                        # Non-cross-subject structured prior regression
-│  │  ├─ cross-regression/                            # Cross-subject static intercept calibration models
+│  │  ├─ cross-regression/                            # Cross-subject CatBoost static intercept calibration model
 │  │  └─ scripts/                                     # Regression benchmark & plotting scripts
 │  └─ figures/                                        # Synchronized manuscript figures (Fig. 9 – Fig. 18)
-├─ feature-enginnering/                               # Reference 50-feature candidate pool & nonlinear expansion tables
-│  ├─ linear-features/experiment1.0-50features/
-│  └─ nonlinear-features/
-├─ docs/                                              # Methodology guides & documentation
+├─ feature-enginnering/                               # Reference 50-feature candidate pool table
+│  └─ linear-features/experiment1.0-50features/
 ├─ requirements.txt                                   # Pinned Python dependencies
 └─ README.md
 ```
@@ -122,7 +119,7 @@ python revision_experiments/generate_manuscript_style_figures.py
 python model/regression/non-cross-regression/regression_structured_prior_model.py
 
 # Cross-subject static intercept calibration regression
-python model/regression/cross-regression/static_intercept_prediction_model.py
+python model/regression/cross-regression/catboost_intercept_model.py
 
 # Regression model comparison benchmarks & plots (R², MAE, MAPE)
 python model/regression/scripts/model_comparison_regression_within.py
