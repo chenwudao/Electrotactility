@@ -285,54 +285,135 @@ def _summary(folds: pd.DataFrame) -> pd.DataFrame:
 
 
 def _plots(metrics: pd.DataFrame, output: Path) -> None:
-    labels = ["RF + subject\nintercept*", "ExtraTrees", "AdaBoost", "CatBoost", "Training mean"]
+    """Render corrected metrics using the manuscript Fig.16 visual style."""
+    import os
+    import warnings
+
+    from matplotlib import font_manager
+    from matplotlib.ticker import AutoMinorLocator, MultipleLocator
+
+    output = Path(output)
+    output.mkdir(parents=True, exist_ok=True)
+    font_families = ["Times New Roman", "Liberation Serif", "DejaVu Serif"]
+    font_override = os.environ.get("ELECTROTACTILITY_FONT")
+    if font_override:
+        font_file = Path(font_override).expanduser().resolve(strict=True)
+        font_manager.fontManager.addfont(str(font_file))
+        font_families.insert(0, font_manager.FontProperties(fname=font_file).get_name())
+    else:
+        # Register newly installed fonts even when Matplotlib's font cache predates them.
+        try:
+            font_manager.findfont(font_manager.FontProperties(family="Times New Roman"), fallback_to_default=False)
+        except ValueError:
+            for candidate in font_manager.findSystemFonts():
+                try:
+                    if font_manager.FontProperties(fname=candidate).get_name() == "Times New Roman":
+                        font_manager.fontManager.addfont(candidate)
+                except (OSError, RuntimeError, ValueError):
+                    # An unrelated unreadable system font must not prevent plotting.
+                    continue
+    font_path = font_manager.findfont(font_manager.FontProperties(family=font_families))
+    actual_font = font_manager.FontProperties(fname=font_path).get_name()
+    if actual_font != "Times New Roman":
+        warnings.warn(
+            f"Times New Roman is unavailable; Fig.16 uses {actual_font}. "
+            "Install Times New Roman or set ELECTROTACTILITY_FONT to its font file for the manuscript typeface.",
+            UserWarning, stacklevel=2,
+        )
+    labels = ["RandomForest", "ExtraTrees", "AdaBoost", "CatBoost", "Baseline"]
     orders = {
         "within_subject": [WITHIN_MODEL, "ExtraTrees", "AdaBoost", "CatBoost", "TrainingMean"],
         "cross_subject": [CROSS_MODEL, "ExtraTrees", "AdaBoost", "CatBoost", "TrainingMean"],
     }
-    def draw(ax, metric: str, ylabel: str, multiplier: float) -> None:
+    colors = ["#f7c58a", "#9ad49b"]
+
+    def draw(ax, metric: str, title: str, scale: float = 1.0) -> None:
+        values_by_setting = []
+        width = 0.36
         for offset, (setting, names) in enumerate(orders.items()):
             data = metrics[metrics["setting"] == setting].set_index("model").loc[names]
-            values = data[f"{metric}_mean"].to_numpy() * multiplier
-            bars = ax.bar(
-                np.arange(5) + (offset - 0.5) * 0.37, values, 0.37,
-                label="Non-cross subject" if offset == 0 else "Cross subject",
-                color="#f3bf83" if offset == 0 else "#91cba0",
+            values = data[f"{metric}_mean"].to_numpy(dtype=float)
+            values_by_setting.append(values)
+            ax.bar(
+                np.arange(5) + (offset - 0.5) * width, values, width,
+                label="Non-Cross Subject" if offset == 0 else "Cross Subject",
+                color=colors[offset],
             )
-            ax.bar_label(bars, fmt="%.2f", padding=3, fontsize=9)
+        within_values, cross_values = values_by_setting
+        if metric == "r2":
+            limits = (
+                min(-0.05, float(cross_values.min()) - 0.05),
+                max(0.55, float(within_values.max()) + 0.05),
+            )
+        else:
+            margin = 12.0 if metric == "mae" else 0.08
+            limits = (0.0, float(max(within_values.max(), cross_values.max())) + margin)
+        ax.set_ylim(*limits)
+        label_offset = 0.01 * (limits[1] - limits[0])
+        for offset, values in enumerate(values_by_setting):
+            for i, value in enumerate(values):
+                ax.text(
+                    i + (offset - 0.5) * width, value + label_offset, f"{value:.2f}",
+                    ha="center", va="bottom", fontsize=12 * scale,
+                )
         ax.set_xticks(np.arange(5), labels)
-        ax.set_ylabel(ylabel)
-        ax.legend(frameon=False)
-        ax.margins(y=0.17)
-        ax.axhline(0, color="black", linewidth=0.6)
-        ax.spines[["top", "right"]].set_visible(False)
-
-    note = (
-        "* Non-cross: RF + partially pooled subject intercept; cross: RF + CatBoost-predicted intercept.\n"
-        "All test scores use raw PT. Non-cross RF clips training PT at its training fold's 2%/98% quantiles; dynamic scaling is fitted on training rows.\n"
-        "Bars are unweighted means of five folds. Historical fixed model and feature choices remain; evaluation is not fully nested."
-    )
-    for metric, ylabel, multiplier in (("r2", "R²", 1), ("mae", "MAE (μs)", 1), ("mape", "MAPE (%)", 100)):
-        fig, ax = plt.subplots(figsize=(10, 6.3))
-        draw(ax, metric, ylabel, multiplier)
-        ax.set_title("Regression with training-fold preprocessing")
-        fig.text(
-            0.07, 0.015, note, fontsize=7, va="bottom",
+        ax.set_ylabel(title, fontsize=24 * scale)
+        ax.set_title(title, fontsize=24 * scale)
+        ax.legend(
+            loc="upper right" if metric == "r2" else "upper left",
+            frameon=True, fontsize=16 * scale, fancybox=True,
         )
-        fig.tight_layout(rect=(0, 0.12, 1, 1))
-        fig.savefig(output / f"regression_comparison_{metric}.png", dpi=200)
+        ax.tick_params(axis="both", labelsize=16 * scale, colors="black", width=1.2)
+        ax.yaxis.set_major_locator(MultipleLocator(10 if metric == "mae" else 0.1))
+        ax.yaxis.set_minor_locator(AutoMinorLocator(2))
+        ax.tick_params(axis="y", which="major", direction="in", length=4, width=1.8, left=True, right=False)
+        ax.tick_params(axis="y", which="minor", direction="in", length=2, width=1.6, left=True, right=False)
+        ax.grid(False)
+        for spine in ax.spines.values():
+            spine.set_visible(True)
+            spine.set_color("black")
+            spine.set_linewidth(1.4)
+
+    style = {
+        "font.family": "serif", "font.serif": font_families,
+        "axes.edgecolor": "black", "axes.linewidth": 1.4,
+        "axes.labelcolor": "black", "xtick.color": "black", "ytick.color": "black",
+        "text.color": "black", "axes.facecolor": "white", "figure.facecolor": "white",
+    }
+    panels = (("r2", "R2"), ("mae", "MAE"), ("mape", "MAPE"))
+    with plt.rc_context(style):
+        for metric, title in panels:
+            fig, ax = plt.subplots(figsize=(8, 6))
+            draw(ax, metric, title)
+            fig.tight_layout()
+            fig.savefig(output / f"regression_comparison_{metric}.png", dpi=300)
+            plt.close(fig)
+
+        # Preserve the original manuscript's 4121:1058 horizontal aspect ratio.
+        fig, axes = plt.subplots(1, 3, figsize=(4121 / 300, 1058 / 300))
+        panel_scale = (4121 / 300) / (3 * 8)
+        for letter, ax, (metric, title) in zip("abc", axes, panels):
+            draw(ax, metric, title, panel_scale)
+            ax.text(-0.11, 1.015, letter, transform=ax.transAxes,
+                    fontsize=28 * panel_scale, ha="left", va="bottom")
+        fig.subplots_adjust(left=0.045, right=0.995, bottom=0.11, top=0.90, wspace=0.18)
+        fig.savefig(output / "regression_comparison_combined.png", dpi=300)
         plt.close(fig)
 
-    # Paper-style Fig.16: identical metrics, with MAPE as a fraction (not percent).
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5.8))
-    for ax, (metric, ylabel) in zip(axes, (("r2", "R²"), ("mae", "MAE (μs)"), ("mape", "MAPE (fraction)"))):
-        draw(ax, metric, ylabel, 1)
-        ax.tick_params(axis="x", labelsize=9)
-    fig.suptitle("Regression with training-fold preprocessing", fontsize=15)
-    fig.text(0.045, 0.02, note, fontsize=9, va="bottom")
-    fig.tight_layout(rect=(0, 0.16, 1, 0.96))
-    fig.savefig(output / "regression_comparison_combined.png", dpi=300)
-    plt.close(fig)
+    (output / "plot_style.json").write_text(json.dumps({
+        "reference": "Revised Manuscript.pdf, Fig.16",
+        "requested_font": "Times New Roman", "actual_font": actual_font,
+        "font_file": font_path, "font_fallback_used": actual_font != "Times New Roman",
+        "font_override": font_override,
+        "colors": colors, "mape_unit_all_figures": "fraction", "dpi": 300,
+        "standalone_size_inches": [8, 6], "combined_size_pixels": [4121, 1058],
+        "display_labels": labels,
+        "random_forest_display_label": {
+            "within_subject": WITHIN_MODEL, "cross_subject": CROSS_MODEL,
+        },
+        "baseline_display_label": "TrainingMean",
+        "source_values": "Five-fold unweighted means from metrics.csv; no fixed performance values.",
+    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def _metadata(preprocessing_audit: list, target_audit: list) -> dict:
@@ -351,7 +432,7 @@ def _metadata(preprocessing_audit: list, target_audit: list) -> dict:
             "folds": N_SPLITS, "within_outer_seed": WITHIN_SEED, "cross_outer_seed": CROSS_SEED,
             "cross_split": "Subject-grouped KFold on sorted unique numeric IDs.",
             "aggregate": "Unweighted mean of five fold metrics; std uses ddof=0.",
-            "mape_unit": "Fraction in CSV and combined Fig.16; percent in the separate MAPE figure.",
+            "mape_unit": "Fraction in CSV and every regression figure, matching manuscript Fig.16.",
             "evaluation_target_all_models": "raw_PT",
             "dynamic_scaling": "MinMaxScaler fitted separately on each outer training fold; reused by all models in that fold.",
         },

@@ -120,8 +120,8 @@ recomputed. The enhanced RF result is not substituted into an ordinary RF row.
 | Cross RF + CatBoost intercept | 0.357845 | 48.119065 | 31.7492% |
 
 Regression values are the arithmetic means of five fold metrics, **not pooled
-OOF R²**. CSV MAPE values and the combined Figure 16 use fractions; the
-standalone MAPE figure shows percentages. Exported fold
+OOF R²**. CSV MAPE values and all regression figures use fractions, matching
+the manuscript (for example, 0.28 represents 28%). Exported fold
 standard deviations use `ddof=0`.
 
 Outputs in `results/regression/` include per-fold and mean metrics, all models'
@@ -134,6 +134,17 @@ applied to that fold's train/test features. For non-cross enhanced RF, the 2%/98
 PT clipping limits are estimated from that outer training fold only and applied
 only to its training labels. Other models keep raw training labels. Clipping
 limits and scaler fitting rows are recorded in `metadata.json`.
+
+Regression figures follow the manuscript Figure 16 style: Times New Roman, the
+original orange/green colours, black frames, inward ticks and a/b/c panels.
+Standalone figures are 2400 x 1800 pixels and the combined figure is
+4121 x 1058 pixels, all at 300 DPI. For the same typeface, install Times New Roman
+or set `ELECTROTACTILITY_FONT` to its `.ttf` file. Missing Times New Roman produces
+an explicit fallback warning; `plot_style.json` records the actual font used.
+Fonts are not bundled. Display labels match the manuscript (`RandomForest` and
+`Baseline`); these denote the enhanced RF models described above and the
+training-mean baseline, respectively. Model identities must remain clear in the
+manuscript caption.
 
 Relative to commit `0e3d847`, the non-cross enhanced RF changes from
 R²=0.494783 / MAE=41.127737 / MAPE=26.4182% to
