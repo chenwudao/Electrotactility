@@ -158,7 +158,7 @@ height = df_body["2. Height"].values.astype(float)
 
 
 # -----------------------------------------------------------------------------
-# 2. 折内无泄漏 Multi-Block PLS-VIP + 互相关去重核心函数
+# 2. 折内无泄漏 PLS-VIP + 互相关去重核心函数
 # -----------------------------------------------------------------------------
 def compute_vip(pls, p):
     W, T, Q = pls.x_weights_, pls.x_scores_, pls.y_loadings_
@@ -199,11 +199,11 @@ def dedup_select_exact(X_tr_mod, order_idx, k, corr_thr=0.85, max_cands=None):
 
 def screen_features_within_fold(tr_mask, te_mask, quota=(4, 5, 2), corr_thr=0.85, fast_tex_cands=None):
     X_tr_mb = np.column_stack([
-        StandardScaler().fit_transform(X_b[tr_mask]) / np.sqrt(X_b.shape[1]),
-        StandardScaler().fit_transform(X_i[tr_mask]) / np.sqrt(X_i.shape[1]),
-        StandardScaler().fit_transform(X_t[tr_mask]) / np.sqrt(X_t.shape[1]),
+        StandardScaler().fit_transform(X_b[tr_mask]),
+        StandardScaler().fit_transform(X_i[tr_mask]),
+        StandardScaler().fit_transform(X_t[tr_mask]),
     ])
-    vip = compute_vip(PLSRegression(n_components=2).fit(X_tr_mb, y_cont[tr_mask]), X_tr_mb.shape[1])
+    vip = compute_vip(PLSRegression(n_components=2, scale=True).fit(X_tr_mb, y_cont[tr_mask]), X_tr_mb.shape[1])
     b_idx = dedup_select_exact(X_b[tr_mask], np.argsort(-vip[modalities == "Body"]), quota[0], corr_thr)
     i_idx = dedup_select_exact(X_i[tr_mask], np.argsort(-vip[modalities == "Imp"]), quota[1], corr_thr) + X_b.shape[1]
     t_idx = dedup_select_exact(X_t[tr_mask], np.argsort(-vip[modalities == "Tex"]), quota[2], corr_thr, max_cands=fast_tex_cands) + X_b.shape[1] + X_i.shape[1]
@@ -592,7 +592,7 @@ def main():
             "Dummy (Training Mean)": np.zeros(n_samples, dtype=float),
             "Trivial: Sex Only (Ridge)": np.zeros(n_samples, dtype=float),
             "Trivial: Sex + Height (Ridge)": np.zeros(n_samples, dtype=float),
-            "Nested CV Multi-Block PLS-VIP + Ridge (k=11)": np.zeros(n_samples, dtype=float),
+            "Nested CV PLS-VIP + Ridge (k=11)": np.zeros(n_samples, dtype=float),
             "Multimodal Base RF (Within-Fold Scaled)": np.zeros(n_samples, dtype=float),
             "Full Multimodal Dynamic + Static Intercept": np.zeros(n_samples, dtype=float),
         }
@@ -620,9 +620,9 @@ def main():
                 sc_sh.transform(np.column_stack([gender[tr_m], height[tr_m]])), y_cont[tr_m]
             ).predict(sc_sh.transform(np.column_stack([gender[te_m], height[te_m]])))
 
-            # 4. Nested CV Multi-Block PLS-VIP + Ridge
+            # 4. Nested CV PLS-VIP + Ridge
             X_tr_lf, X_te_lf, _, _ = screen_features_within_fold(tr_m, te_m, quota=(4, 5, 2), corr_thr=0.85)
-            models_reg_preds["Nested CV Multi-Block PLS-VIP + Ridge (k=11)"][te_m] = Ridge(alpha=100.0).fit(
+            models_reg_preds["Nested CV PLS-VIP + Ridge (k=11)"][te_m] = Ridge(alpha=100.0).fit(
                 X_tr_lf, y_cont[tr_m]
             ).predict(X_te_lf)
 

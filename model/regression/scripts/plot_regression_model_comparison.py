@@ -30,6 +30,9 @@ OUTPUT_MAPE_PNG = os.path.join(RESULTS_DIR, "regression_model_comparison_mape.pn
 OUTPUT_XLSX = os.path.join(RESULTS_DIR, "regression_model_comparison_with_baseline.xlsx")
 
 MODEL_ORDER = ["RandomForest", "ExtraTrees", "AdaBoost", "CatBoost", "Baseline"]
+NONCROSS_RF_RESULTS = os.path.join(BASE_DIR, "model", "regression", "non-cross-regression", "regression_structured_prior_within.xlsx")
+CROSS_RF_RESULTS = os.path.join(BASE_DIR, "model", "regression", "cross-regression", "catboost_intercept_reproduce_best_results.xlsx")
+NONCROSS_RIDGE_ALPHA = 1.0
 
 WITHIN_KF_STATE = 53
 CROSS_KF_STATE = 427
@@ -155,8 +158,21 @@ def main():
     within_df = order_and_filter(within_df)
     cross_df = order_and_filter(cross_df)
 
-    # All plotted metrics are taken directly from the cross-validated results produced by
-    # model_comparison_regression_within.py / model_comparison_regression_cross.py (no manual overrides).
+    # The "RandomForest" bars report the RF-based models with subject-level intercept calibration:
+    #   - non-cross-subject: RF + partially pooled subject intercepts
+    #     (regression_structured_prior_model.py, ridge alpha for subject intercepts = 1.0)
+    #   - cross-subject: RF dynamic model + CatBoost-predicted static intercept
+    #     (catboost_intercept_model.py)
+    # Values are read from the outputs of these two scripts.
+    sweep = pd.read_excel(NONCROSS_RF_RESULTS, sheet_name="ridge_alpha_sweep")
+    row_w = sweep.loc[np.isclose(sweep["ridge_alpha"], NONCROSS_RIDGE_ALPHA)].iloc[0]
+    rf_cross = pd.read_excel(CROSS_RF_RESULTS, sheet_name="summary").iloc[0]
+    rf_mask_w = within_df["model"] == "RandomForest"
+    within_df.loc[rf_mask_w, ["r2_mean", "mae_mean", "mape_mean"]] = [
+        row_w["r2_mean_structured"], row_w["mae_mean_structured"], row_w["mape_mean_structured"]]
+    rf_mask_c = cross_df["model"] == "RandomForest"
+    cross_df.loc[rf_mask_c, ["r2_mean", "mae_mean", "mape_mean"]] = [
+        rf_cross["mean_r2"], rf_cross["mean_mae"], rf_cross["mean_mape"]]
 
     combined_df = within_df.merge(
         cross_df,

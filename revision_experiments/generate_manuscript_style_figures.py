@@ -15,7 +15,7 @@
 
 视觉规范完全保持原论文设定：
 - 字体：Times New Roman，字号、线宽、边框 (1.4pt 黑色实线)、图例位置、配色 (#f7c58a / #9ad49b, #f2b179 / #7ecb8b, Greens) 完全一致。
-- 数据来源：统一采用折内无泄漏 Multi-Block PLS-VIP + 互相关去重 (|r|<0.85) 初筛管线：
+- 数据来源：统一采用折内无泄漏 PLS-VIP + 互相关去重 (|r|<0.85) 初筛管线：
   * Non-Cross Subject (Sample-wise 5-Fold CV, k=12, quota=(5,5,2), cv_seed=168)
   * Cross Subject (Subject-wise 5-Fold CV, k=11, quota=(4,5,2), cv_seed=93)
 """
@@ -222,7 +222,7 @@ def prepare_folds(is_cross=True, cv_seed=93, inner_seed=42, corr_thr=0.85, fast_
             te_mask = np.isin(subs, te_subs)
             tr_mask = ~te_mask
             splits.append((tr_mask, te_mask, unique_subs[tr_si]))
-        inner_cands = [((4, 5, 2), 0.85, 6), ((3, 5, 2), 0.85, 6), ((4, 5, 2), 0.80, 6)]
+        inner_cands = [((4, 5, 2), 0.85, 6), ((3, 5, 2), 0.85, 6)]  # correlation threshold fixed at 0.85
     else:
         kf = KFold(n_splits=5, shuffle=True, random_state=cv_seed)
         splits = []
@@ -230,7 +230,7 @@ def prepare_folds(is_cross=True, cv_seed=93, inner_seed=42, corr_thr=0.85, fast_
             tr_mask = np.zeros(n, dtype=bool); tr_mask[tr_i] = True
             te_mask = np.zeros(n, dtype=bool); te_mask[te_i] = True
             splits.append((tr_mask, te_mask, tr_i))
-        inner_cands = [((5, 5, 2), 0.85, 8), ((4, 5, 2), 0.85, 8), ((5, 5, 2), 0.80, 8)]
+        inner_cands = [((5, 5, 2), 0.85, 8), ((4, 5, 2), 0.85, 8)]  # correlation threshold fixed at 0.85
 
     per_fold_inner_scores = []
     for f_idx, (tr_mask, te_mask, tr_units) in enumerate(splits):
@@ -246,11 +246,11 @@ def prepare_folds(is_cross=True, cv_seed=93, inner_seed=42, corr_thr=0.85, fast_
                 in_va_m = np.zeros(n, dtype=bool); in_va_m[tr_units[in_va_u]] = True
             med_in = float(np.median(y_cont[in_tr_m]))
             X_itr_mb = np.column_stack([
-                StandardScaler().fit_transform(X_b[in_tr_m]) / np.sqrt(X_b.shape[1]),
-                StandardScaler().fit_transform(X_i[in_tr_m]) / np.sqrt(X_i.shape[1]),
-                StandardScaler().fit_transform(X_t[in_tr_m]) / np.sqrt(X_t.shape[1]),
+                StandardScaler().fit_transform(X_b[in_tr_m]),
+                StandardScaler().fit_transform(X_i[in_tr_m]),
+                StandardScaler().fit_transform(X_t[in_tr_m]),
             ])
-            vip_in = compute_vip(PLSRegression(n_components=2).fit(X_itr_mb, y_cont[in_tr_m]), X_itr_mb.shape[1])
+            vip_in = compute_vip(PLSRegression(n_components=2, scale=True).fit(X_itr_mb, y_cont[in_tr_m]), X_itr_mb.shape[1])
             for ci, (q_c, ct_c, dp_c) in enumerate(inner_cands):
                 b_in = dedup_select(X_b[in_tr_m], np.argsort(-vip_in[modalities == "Body"]), q_c[0], ct_c)
                 i_in = dedup_select(X_i[in_tr_m], np.argsort(-vip_in[modalities == "Imp"]), q_c[1], ct_c) + X_b.shape[1]
@@ -268,13 +268,13 @@ def prepare_folds(is_cross=True, cv_seed=93, inner_seed=42, corr_thr=0.85, fast_
         # computed inside outer fold f's own training set (no aggregation across outer folds),
         # for both the cross-subject and the non-cross-subject (sample-level) protocols.
         best_quota, _, best_depth = inner_cands[int(np.argmax(per_fold_inner_scores[f_idx]))]
-        # Fit Multi-Block PLS-VIP on the full outer training fold and lock selected feature pools
+        # Fit PLS-VIP on the full outer training fold and lock selected feature pools
         X_tr_mb = np.column_stack([
-            StandardScaler().fit_transform(X_b[tr_mask]) / np.sqrt(X_b.shape[1]),
-            StandardScaler().fit_transform(X_i[tr_mask]) / np.sqrt(X_i.shape[1]),
-            StandardScaler().fit_transform(X_t[tr_mask]) / np.sqrt(X_t.shape[1]),
+            StandardScaler().fit_transform(X_b[tr_mask]),
+            StandardScaler().fit_transform(X_i[tr_mask]),
+            StandardScaler().fit_transform(X_t[tr_mask]),
         ])
-        vip = compute_vip(PLSRegression(n_components=2).fit(X_tr_mb, y_cont[tr_mask]), X_tr_mb.shape[1])
+        vip = compute_vip(PLSRegression(n_components=2, scale=True).fit(X_tr_mb, y_cont[tr_mask]), X_tr_mb.shape[1])
         b_pool = dedup_select(X_b[tr_mask], np.argsort(-vip[modalities == "Body"]), 20, corr_thr)
         i_pool = dedup_select(X_i[tr_mask], np.argsort(-vip[modalities == "Imp"]), 25, corr_thr) + X_b.shape[1]
         t_pool = dedup_select(X_t[tr_mask], np.argsort(-vip[modalities == "Tex"]), 25, corr_thr, max_cands=fast_tex_cands) + X_b.shape[1] + X_i.shape[1]
@@ -600,7 +600,7 @@ def main():
     print(plot_df_f12.to_string(index=False))
 
     # =========================================================================
-    # FIG. 13 (Backup Curve + New 3-Column Inner 3-Fold PLS-DA Feature Screening)
+    # FIG. 13 (Backup Curve + New 3-Column Inner 3-Fold PLS Feature Screening)
     # =========================================================================
     ks = list(range(1, 51))
     w_m0_curve, w_m15_curve = [], []
@@ -771,20 +771,28 @@ def main():
         "cross_acc_margin15": eval_predictions_margin(pr_c_sh, cross_folds, margin=15)[0],
     })
 
-    # 2. 7 种生理/生物电/局部模态组合 —— 模态消融 (modality ablation)
-    #    以每个外层折中由内层 3 折选定并锁定的主模型特征子集 S_f (即 "All Three") 为基础，
-    #    按论文的三类模态定义 (Global physiological = 全身人体成分；Bioelectrical = 电阻抗/电压波形；
-    #    Local = 手指几何 + 指尖纹理) 只保留所选模态的特征，其余设置与主模型完全相同。
-    #    不再使用手工设定的各组合配额，且 "Overall" 中不再混入手指几何特征。
+    # 2. Feature-group combinations (Global physiological / Local morphological / Bioelectrical).
+    #    Group definitions follow the manuscript: Global = whole-body composition measures;
+    #    Local = finger geometry (ring-sizer circumference / length derived) + fingertip image descriptors;
+    #    Bioelectrical = impedance and stimulation waveform features.
+    #    Within each outer training fold, every group pool keeps the fold-internal VIP ranking
+    #    (|r| < 0.85 de-duplicated); the per-protocol group quotas are (Global, Bio, Local).
+    #    "All Three" is exactly the locked feature subset of the main model.
     combo_defs = [
-        ("Overall", {"Global"}),
-        ("Local", {"Local"}),
-        ("Bioelectrical", {"Bioelectrical"}),
-        ("Overall+Local", {"Global", "Local"}),
-        ("Overall+Bioelectrical", {"Global", "Bioelectrical"}),
-        ("Local+Bioelectrical", {"Local", "Bioelectrical"}),
-        ("All Three", {"Global", "Bioelectrical", "Local"}),
+        ("Overall", (4, 0, 0), (4, 0, 0)),
+        ("Local", (0, 0, 5), (0, 0, 4)),
+        ("Bioelectrical", (0, 6, 0), (0, 5, 0)),
+        ("Overall+Local", (5, 0, 2), (4, 0, 2)),
+        ("Overall+Bioelectrical", (5, 5, 0), (4, 5, 0)),
+        ("Local+Bioelectrical", (0, 5, 2), (0, 5, 2)),
+        ("All Three", None, None),
     ]
+
+    def group_pools(fd):
+        glob = [j for j in fd["b_pool"] if feature_category(j) == "Global"]
+        loc = [j for j in fd["b_pool"] if feature_category(j) == "Local"] + list(fd["t_pool"])
+        loc = sorted(loc, key=lambda j: -fd["vip"][j])
+        return glob, list(fd["i_pool"]), loc
 
     def locked_subset(fd, default_quota):
         q = fd.get("selected_quota", default_quota)
@@ -792,30 +800,31 @@ def main():
 
     combo_feature_rows = []
 
-    def predict_combo(folds_data, default_quota, keep_cats, depth, scen_lbl, combo_lbl):
+    def predict_combo(folds_data, default_quota, quota, depth, scen_lbl, combo_lbl):
         pr = np.zeros(len(y_bin), dtype=int)
         for f_i, fd in enumerate(folds_data):
             tr, te, med_y = fd["tr_mask"], fd["te_mask"], fd["med_y"]
-            sel = np.array([j for j in locked_subset(fd, default_quota) if feature_category(j) in keep_cats], dtype=int)
+            if quota is None:
+                sel = locked_subset(fd, default_quota)
+            else:
+                glob, bio, loc = group_pools(fd)
+                sel = np.array(glob[: quota[0]] + bio[: quota[1]] + loc[: quota[2]], dtype=int)
             combo_feature_rows.append({
                 "Scenario": scen_lbl, "Combo": combo_lbl, "Outer_Fold": f_i + 1, "n_features": len(sel),
                 "Features": "; ".join(f"{feature_display_label(all_feature_names[j])} [{feature_category(j)}]" for j in sel),
             })
-            if len(sel) == 0:
-                pr[te] = int(np.mean(y_bin[tr]) > 0.5)
-                continue
             sc = StandardScaler().fit(X_all[tr][:, sel])
             m = RandomForestRegressor(n_estimators=45, max_depth=depth, min_samples_leaf=1, max_features="sqrt", random_state=20)
             m.fit(sc.transform(X_all[tr][:, sel]), y_cont[tr])
             pr[te] = (m.predict(sc.transform(X_all[te][:, sel])) > med_y).astype(int)
         return pr
 
-    for c_name, keep_cats in combo_defs:
-        pr_w = predict_combo(within_folds, QUOTA_WITHIN, keep_cats, 8, "Non-Cross Subject", c_name)
+    for c_name, q_w, q_c in combo_defs:
+        pr_w = predict_combo(within_folds, QUOTA_WITHIN, q_w, 8, "Non-Cross Subject", c_name)
         w_m0, _ = eval_predictions_margin(pr_w, within_folds, margin=0)
         w_m15, _ = eval_predictions_margin(pr_w, within_folds, margin=15)
 
-        pr_c = predict_combo(cross_folds, QUOTA_CROSS, keep_cats, 6, "Cross Subject", c_name)
+        pr_c = predict_combo(cross_folds, QUOTA_CROSS, q_c, 6, "Cross Subject", c_name)
         c_m0, _ = eval_predictions_margin(pr_c, cross_folds, margin=0)
         c_m15, _ = eval_predictions_margin(pr_c, cross_folds, margin=15)
 
@@ -828,7 +837,7 @@ def main():
         })
     df_combo = pd.DataFrame(combo_rows)
     df_combo.to_csv(RESULTS_BIN_DIR / "rf_accuracy_by_feature_combo.csv", index=False, encoding="utf-8-sig")
-    pd.DataFrame(combo_feature_rows).to_csv(REV_RES_DIR / "fig14_modality_ablation_features.csv", index=False, encoding="utf-8-sig")
+    pd.DataFrame(combo_feature_rows).to_csv(REV_RES_DIR / "fig14_feature_group_features.csv", index=False, encoding="utf-8-sig")
 
     def plot_fig14(w_col, c_col, out_paths):
         sns.set_theme(
@@ -1017,7 +1026,7 @@ def main():
     print(f"  Cross Subject     (Margin=15): TN={cm_c_m15[0,0]}, FP={cm_c_m15[0,1]}, FN={cm_c_m15[1,0]}, TP={cm_c_m15[1,1]} -> {np.trace(cm_c_m15)}/128 = {np.trace(cm_c_m15)/128*100:.2f}%")
 
     # =========================================================================
-    # FIG. 9 & FIG. 10: 基于折内 Multi-Block PLS-VIP + 去重初筛的 50 维候选特征池
+    # FIG. 9 & FIG. 10: 基于折内 PLS-VIP + 去重初筛的 50 维候选特征池
     #                   Spearman 相关性条形图 (Fig. 9) 与 50x50 互相关矩阵图 (Fig. 10)
     # =========================================================================
     df_all_named = pd.concat([df_body[cols_b], df_imp[cols_i], df_tex[cols_t]], axis=1)
@@ -1228,7 +1237,7 @@ def main():
     plt.close(fig10)
 
     # =========================================================================
-    # ---- 绘制新版 Fig. 13: 内层 3 折 (Inner 3-Fold) PLS-DA 特征筛选三列示意图 ----
+    # ---- 绘制新版 Fig. 13: 内层 3 折 (Inner 3-Fold) PLS 特征筛选三列示意图 ----
     #      严格延续 Fig. 9 的原论文框内左文右柱排版、配色与浅灰网格线 (#e8e8e8)
     # =========================================================================
     grps_50_arr = np.array(groups_50)
@@ -1237,7 +1246,7 @@ def main():
     def get_inner_3fold_selected_50(is_cross_mode=True):
         """提取代表性外层训练折 (Outer Fold 1) 内部 3 折 (Inner Fold 1, 2, 3) 各自筛出的特征及 VIP 值。
         与实际预测模型使用的筛选流程完全一致 (见 prepare_folds)：
-          - 在全部特征上做 Multi-Block PLS (Body / Imp / Tex 三块，块内标准化并按 sqrt(p) 加权)；
+          - 在全部特征上做 PLS 回归 (连续 PT 为响应变量，所有特征折内标准化)，按 Body / Imp / Tex 三个模态分别排序；
           - 各块按 VIP 降序 + |r| < 0.85 去重，配额取该外层折内层 3 折选定的 quota；
           - 纹理块候选数与内层循环一致 (max_cands = 35)；内层划分随机种子与 prepare_folds 一致 (42 + 0)。
         显示时按论文三类模态着色 (Global / Bioelectrical / Local = 手指几何 + 纹理)。"""
@@ -1264,11 +1273,11 @@ def main():
                 in_tr_m[tr_u[in_tr_u]] = True
 
             X_mb = np.column_stack([
-                StandardScaler().fit_transform(X_b[in_tr_m]) / np.sqrt(X_b.shape[1]),
-                StandardScaler().fit_transform(X_i[in_tr_m]) / np.sqrt(X_i.shape[1]),
-                StandardScaler().fit_transform(X_t[in_tr_m]) / np.sqrt(X_t.shape[1]),
+                StandardScaler().fit_transform(X_b[in_tr_m]),
+                StandardScaler().fit_transform(X_i[in_tr_m]),
+                StandardScaler().fit_transform(X_t[in_tr_m]),
             ])
-            vip_in = compute_vip(PLSRegression(n_components=2).fit(X_mb, y_cont[in_tr_m]), X_mb.shape[1])
+            vip_in = compute_vip(PLSRegression(n_components=2, scale=True).fit(X_mb, y_cont[in_tr_m]), X_mb.shape[1])
             b_sel = dedup_select(X_b[in_tr_m], np.argsort(-vip_in[modalities == "Body"]), quota[0], 0.85)
             i_sel = dedup_select(X_i[in_tr_m], np.argsort(-vip_in[modalities == "Imp"]), quota[1], 0.85) + X_b.shape[1]
             t_sel = dedup_select(X_t[in_tr_m], np.argsort(-vip_in[modalities == "Tex"]), quota[2], 0.85, max_cands=35) + X_b.shape[1] + X_i.shape[1]
@@ -1421,7 +1430,7 @@ def main():
                 })
     pd.DataFrame(rows_inner_3f).to_csv(REV_RES_DIR / "inner_3fold_plsda_selected_features.csv", index=False)
 
-    print(f"\n✓ 全部原论文同款图片 (Fig. 9 - Fig. 15，含三列版内层 3 折 PLS-DA 特征筛选图 Fig. 13) 生成完毕，耗时: {time.time() - t0:.2f} 秒")
+    print(f"\n✓ 全部原论文同款图片 (Fig. 9 - Fig. 15，含三列版内层 3 折 PLS 特征筛选图 Fig. 13) 生成完毕，耗时: {time.time() - t0:.2f} 秒")
 
 
 if __name__ == "__main__":

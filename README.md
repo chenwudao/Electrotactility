@@ -4,7 +4,7 @@ This repository contains the official data, feature matrices, modeling pipelines
 
 The repository supports two primary predictive tasks and one covariate-adjusted statistical association analysis:
 
-1. **Binary PT Classification (Primary Task)**: Classifies samples into low-threshold ($\text{PT} \le 156.0\ \mu\text{s}$) and high-threshold ($\text{PT} > 156.0\ \mu\text{s}$) categories using a strictly leak-free **Two-Layer Nested Cross-Validation (`Outer 5-Fold CV` + `Inner 3-Fold Multi-Block PLS-DA VIP`)** pipeline under both **Non-Cross-Subject** and **Cross-Subject** protocols.
+1. **Binary PT Classification (Primary Task)**: Classifies samples into low-threshold ($\text{PT} \le 156.0\ \mu\text{s}$) and high-threshold ($\text{PT} > 156.0\ \mu\text{s}$) categories using a strictly leak-free **Two-Layer Nested Cross-Validation (`Outer 5-Fold CV` + `Inner 3-Fold PLS-VIP Feature Screening`)** pipeline under both **Non-Cross-Subject** and **Cross-Subject** protocols.
 2. **Continuous PT Regression**: Predicts continuous perception thresholds ($\mu\text{s}$) under non-cross-subject structured prior modeling and cross-subject static intercept calibration.
 3. **Participant-Clustered GEE Association Analysis**: Evaluates univariate and covariate-adjusted (`Sex` and `Sex + Height`) feature–PT associations using **Generalized Estimating Equations (GEE)** clustered by participant ID with Huber–White sandwich standard errors, $95\%$ confidence intervals, and Benjamini–Hochberg false discovery rate (BH-FDR) correction.
 
@@ -40,7 +40,7 @@ Electrotactility/
 │  ├─ X_电阻抗.xlsx                                    # Bioelectrical impedance & transient voltage features
 │  ├─ X_纹理特征.xlsx                                  # Local finger geometry & epidermal texture descriptors
 │  └─ Y.xlsx                                          # Target PT labels, participant IDs, sex, and finger indices
-├─ revision_experiments/                              # Unified leak-free nested CV, GEE analysis & manuscript figures
+├─ revision_experiments/                              # Nested CV, GEE analysis & manuscript figures
 │  ├─ run_all_unified_revision_closure.py             # Master script: Nested CV classification, regression & GEE tables
 │  ├─ generate_manuscript_style_figures.py            # Master script: Generates manuscript Fig. 9 – Fig. 15 (300 DPI)
 │  └─ results/                                        # Generated Excel/CSV tables, GEE reports & 300 DPI figures
@@ -75,12 +75,11 @@ All preprocessing, scaling, feature screening, and hyperparameter selection step
 - **Outer 5-Fold Cross-Validation**:
   - **Cross-Subject Setting**: Participant-grouped 5-fold split ($25\text{–}26$ participants for training, $6\text{–}7$ participants for testing per fold; all 4 fingers of any participant remain strictly in the same fold).
   - **Non-Cross-Subject Setting**: Sample-level 5-fold split across the 128 records.
-- **Inner 3-Fold Multi-Block PLS-DA VIP Screening**:
-  - Inside each outer training fold, a 3-fold inner split evaluates candidate modality quotas:
-    1. **Within-Fold Z-Score Standardization**;
-    2. **Multi-Block Equal-Variance Scaling**: Each modality block $b \in \{\text{Global}, \text{Bioelectrical}, \text{Local}\}$ with dimension $p_b$ is scaled by $1/\sqrt{p_b}$ so that all three modalities contribute equal prior variance ($1:1:1$) regardless of dimensionality;
-    3. **Supervised 2-Component PLS-DA Projection & VIP Ranking**: Computes Variable Importance in Projection (VIP) scores exclusively on the training partition;
-    4. **Collinearity Deduplication ($|\rho| < 0.85$)**: Greedily retains top-VIP features within each modality while filtering out redundant features with pairwise correlation $\ge 0.85$.
+- **Inner 3-Fold PLS-VIP Feature Screening**:
+  - Inside each outer training fold, a 3-fold inner split evaluates candidate modality quotas (correlation threshold fixed at $|r| < 0.85$):
+    1. **Within-Fold Standardization**: all features are z-scored using the training partition only;
+    2. **2-Component PLS Regression on Continuous PT & VIP Ranking**: a PLS regression model (continuous PT as the response) is fitted on the training partition and Variable Importance in Projection (VIP) scores are computed;
+    3. **Modality-Wise Quota Selection with Collinearity Deduplication ($|r| < 0.85$)**: within each modality (body composition, bioelectrical, image texture), features are ranked by VIP and greedily retained while filtering out redundant features with pairwise correlation $\ge 0.85$; the modality quota is chosen by inner-fold validation accuracy.
 - **Downstream Classifier Evaluation**:
   - Using the compact multimodal feature subset locked by the inner CV ($k = 11$ for cross-subject; $k = 12$ for non-cross-subject), four representative classifiers (`RandomForest`, `ExtraTrees`, `KNN`, `SVM`) and demographic baselines (`Sex`, `Sex + Height`) are trained on the outer training fold and evaluated on the held-out outer test fold.
 
