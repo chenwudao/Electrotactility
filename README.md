@@ -1,7 +1,7 @@
 # Electrotactility: Classification and Regression Reproduction
 
-This repository recomputes the historical perception-threshold (PT) classification
-and regression results from the supplied feature tables: **128 finger records
+This repository recomputes perception-threshold (PT) classification and regression
+results from the supplied feature tables: **128 finger records
 from 32 participants, with four fingers per participant**.
 
 The release contains one entry point, two task modules and five input tables.
@@ -9,9 +9,10 @@ Ablation experiments, GEE association analysis, descriptive correlation figures,
 parameter-search scripts and previously generated result files are outside this
 release. The original implementation remains available in Git history.
 
-**This is a historical-result reproduction, not a corrected or independently
-validated evaluation.** The methodological limitations below are retained and
-disclosed so that matching the numbers is not mistaken for resolving them.
+**Regression preprocessing now uses training-fold-only scaling and target
+clipping, with raw PT retained for every test score.** Fixed historical features,
+model parameters and classification seeds are retained. The remaining evaluation
+limitations below mean that this is not a new independent validation.
 
 ## Run
 
@@ -115,19 +116,32 @@ recomputed. The enhanced RF result is not substituted into an ordinary RF row.
 
 | Enhanced model | Mean fold R² | Mean fold MAE (us) | Mean fold MAPE |
 |---|---:|---:|---:|
-| Non-cross RF + subject intercept | 0.494783 | 41.127737 | 26.4182% |
+| Non-cross RF + subject intercept | 0.489183 | 42.103152 | 27.7840% |
 | Cross RF + CatBoost intercept | 0.357845 | 48.119065 | 31.7492% |
 
 Regression values are the arithmetic means of five fold metrics, **not pooled
-OOF R²**. CSV MAPE values are fractions; figures show percentages. Exported fold
+OOF R²**. CSV MAPE values and the combined Figure 16 use fractions; the
+standalone MAPE figure shows percentages. Exported fold
 standard deviations use `ddof=0`.
 
 Outputs in `results/regression/` include per-fold and mean metrics, all models'
-OOF predictions, enhanced-model OOF predictions, method metadata and three
-comparison figures. `y_raw`, `y_evaluation` and `evaluation_target` make the target
-used for every reported error explicit.
+OOF predictions, enhanced-model OOF predictions, method metadata, three separate
+comparison figures and a three-panel figure suitable for manuscript Figure 16. `y_raw`, `y_evaluation` and `evaluation_target` make the target used
+for every reported error explicit; all held-out records are scored on raw PT.
 
-## Evaluation limitations retained for reproducibility
+Dynamic MinMax scaling is fitted separately on each outer training fold and then
+applied to that fold's train/test features. For non-cross enhanced RF, the 2%/98%
+PT clipping limits are estimated from that outer training fold only and applied
+only to its training labels. Other models keep raw training labels. Clipping
+limits and scaler fitting rows are recorded in `metadata.json`.
+
+Relative to commit `0e3d847`, the non-cross enhanced RF changes from
+R²=0.494783 / MAE=41.127737 / MAPE=26.4182% to
+R²=0.489183 / MAE=42.103152 / MAPE=27.7840%. Correcting MinMax scaling alone
+did not change any prediction for this supplied dataset and the fixed settings.
+Classification and the remaining regression model/setting results are unchanged.
+
+## Remaining evaluation limitations
 
 - The historical non-cross classification inner seed was chosen after inspecting
   outer accuracy. Reproducing that configuration does not make it an independent
@@ -135,16 +149,15 @@ used for every reported error explicit.
 - The regression feature list is inherited; its selection provenance is not
   encoded here. Enhanced-model parameters were historically chosen using the
   evaluation folds. Regression is **not nested hyperparameter evaluation**.
-- Historical dynamic regression scaling uses the full cohort. In non-cross
-  enhanced RF, PT is winsorized using full-cohort 2%/98% quantiles, including test
-  targets. Its evaluation target therefore differs from the raw PT used for the
-  other bars. Both raw and evaluated targets are exported and the plots state
-  this difference. These bars are not a corrected fair comparison.
+- The fixed regression log-feature construction is inherited. Its helper uses
+  the full column minimum only if a nonpositive value occurs; all five supplied
+  log-feature inputs are strictly positive, so that shift branch is not used
+  for this dataset. A different dataset would need a training-only log policy.
 - Cross intercept shrinkage uses training-subject LOO intercept predictions,
   with residual targets from an RF fitted on the outer training set; this is not
   LOO retraining of the complete two-stage model.
 - Some waveform features were acquired after PT measurement. Use before a first
   PT measurement requires a separate assessment of feature availability.
 
-Removing ancillary experiments simplifies execution. It does not correct these
-selection/target-processing issues or establish clinical or causal validity.
+The two preprocessing corrections do not remove historical selection bias or
+establish clinical or causal validity. No new parameter search is performed.

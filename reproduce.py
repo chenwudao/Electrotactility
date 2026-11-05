@@ -20,7 +20,7 @@ def main():
     destination = args.output_dir.resolve()
     destination.mkdir(parents=True, exist_ok=True)
     manifest = {
-        "scope": "Historical classification/regression reproduction; see README for evaluation limitations.",
+        "scope": "PT reproduction with training-fold regression preprocessing; see README for remaining evaluation limitations.",
         "versions": {name: importlib.metadata.version(name) for name in
                      ("numpy", "scipy", "pandas", "scikit-learn", "matplotlib", "openpyxl", "catboost")},
         "tasks": {},

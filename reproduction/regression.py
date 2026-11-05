@@ -1,8 +1,9 @@
-"""Recompute the historical Fig. 16 regression results from the supplied data.
+"""Recompute Fig. 16 regression results with training-fold preprocessing.
 
 This is a result-reproduction module, not a claim of unbiased nested evaluation.
-The historical full-cohort scaling, within-subject target winsorization and
-previously selected parameters are retained explicitly; see metadata.json.
+All test scores use raw PT. Dynamic scaling and non-cross RF target clipping
+are fitted only on each outer training fold; historical fixed model and feature
+choices remain unchanged. See metadata.json for the remaining limitations.
 """
 
 from __future__ import annotations
@@ -120,37 +121,66 @@ def _scores(y: np.ndarray, prediction: np.ndarray) -> dict:
 
 def _record(
     folds: list, oof: list, setting: str, model: str, fold: int,
-    train: np.ndarray, test: np.ndarray, y_raw: np.ndarray, y_evaluation: np.ndarray,
-    subjects: np.ndarray, prediction: np.ndarray, target: str,
+    train: np.ndarray, test: np.ndarray, y_raw: np.ndarray,
+    subjects: np.ndarray, prediction: np.ndarray,
     base_prediction: np.ndarray | None = None, **parameters,
 ) -> None:
     folds.append({
         "setting": setting, "model": model, "fold": fold,
-        "n_train": len(train), "n_test": len(test), "evaluation_target": target,
-        **_scores(y_evaluation[test], prediction), **parameters,
+        "n_train": len(train), "n_test": len(test), "evaluation_target": "raw_PT",
+        **_scores(y_raw[test], prediction), **parameters,
     })
     for j, row in enumerate(test):
         oof.append({
             "setting": setting, "model": model, "fold": fold,
             "row": int(row), "subject": subjects[row],
-            "y_raw": y_raw[row], "y_evaluation": y_evaluation[row],
-            "prediction": prediction[j], "evaluation_target": target,
+            "y_raw": y_raw[row], "y_evaluation": y_raw[row],
+            "prediction": prediction[j], "evaluation_target": "raw_PT",
             "base_prediction": np.nan if base_prediction is None else base_prediction[j],
         })
 
 
-def _within_enhanced(
-    X: np.ndarray, y_raw: np.ndarray, subjects: np.ndarray,
-    splits: list, folds: list, oof: list,
-) -> np.ndarray:
-    # Historical evaluation clips the entire target, including held-out labels.
-    # Keep this behavior to reproduce the reported value, and label it explicitly.
-    limits = np.quantile(y_raw, [0.02, 0.98])
-    y = np.clip(y_raw, *limits)
+def _prepare_fold_inputs(dynamic: np.ndarray, subjects: np.ndarray, splits: list,
+                         setting: str, audit: list) -> list:
+    """Fit one dynamic scaler per training fold, shared by that fold's models."""
+    prepared = []
     for fold, (train, test) in enumerate(splits, 1):
-        base = RandomForestRegressor(**RF_WITHIN).fit(X[train], y[train])
-        base_test = base.predict(X[test])
-        residuals = y[train] - base.predict(X[train])
+        if np.intersect1d(train, test).size:
+            raise ValueError("Training and test rows overlap.")
+        if setting == "cross_subject" and np.intersect1d(subjects[train], subjects[test]).size:
+            raise ValueError("Cross-subject training and test subjects overlap.")
+        scaler = MinMaxScaler().fit(dynamic[train])
+        audit.append({
+            "setting": setting, "fold": fold,
+            "train_rows": train.tolist(), "test_rows": test.tolist(),
+            "train_subjects": np.unique(subjects[train]).tolist(),
+            "test_subjects": np.unique(subjects[test]).tolist(),
+            "dynamic_scaler_fit_rows": train.tolist(),
+            "dynamic_scaler_scope": "outer_train_only",
+            "dynamic_scaler_data_min": scaler.data_min_.tolist(),
+            "dynamic_scaler_data_max": scaler.data_max_.tolist(),
+        })
+        prepared.append((train, test, scaler.transform(dynamic[train]), scaler.transform(dynamic[test])))
+    return prepared
+
+
+def _within_enhanced(
+    y_raw: np.ndarray, subjects: np.ndarray, prepared: list,
+    folds: list, oof: list, target_audit: list,
+) -> None:
+    for fold, (train, test, X_train, X_test) in enumerate(prepared, 1):
+        limits = np.quantile(y_raw[train], [0.02, 0.98])
+        y_train = np.clip(y_raw[train], *limits)
+        target_audit.append({
+            "setting": "within_subject", "model": WITHIN_MODEL, "fold": fold,
+            "quantiles": [0.02, 0.98], "clipping_limits_us": limits.tolist(),
+            "clipping_fit_rows": train.tolist(),
+            "clipped_training_rows": train[~np.isclose(y_train, y_raw[train])].tolist(),
+            "changed_test_evaluation_rows": [], "evaluation_target": "raw_PT",
+        })
+        base = RandomForestRegressor(**RF_WITHIN).fit(X_train, y_train)
+        base_test = base.predict(X_test)
+        residuals = y_train - base.predict(X_train)
         unique = np.unique(subjects[train])
         design = (subjects[train, None] == unique[None, :]).astype(float)
         ridge = Ridge(alpha=SUBJECT_RIDGE_ALPHA, fit_intercept=True, random_state=42)
@@ -159,34 +189,34 @@ def _within_enhanced(
         prediction = base_test + np.array([offsets.get(s, 0.0) for s in subjects[test]])
         _record(
             folds, oof, "within_subject", WITHIN_MODEL, fold, train, test,
-            y_raw, y, subjects, prediction, "winsorized_PT", base_test,
-            ridge_alpha=SUBJECT_RIDGE_ALPHA,
+            y_raw, subjects, prediction, base_test,
+            ridge_alpha=SUBJECT_RIDGE_ALPHA, clipping_lower=float(limits[0]),
+            clipping_upper=float(limits[1]),
         )
-    return limits
 
 
 def _fit_intercept(X: np.ndarray, alpha: np.ndarray) -> CatBoostRegressor:
     model = CatBoostRegressor(
-        verbose=False, allow_writing_files=False, random_state=42,
+        verbose=False, allow_writing_files=False, random_state=42, thread_count=1,
         **INTERCEPT_CATBOOST,
     )
     return model.fit(X, alpha)
 
 
 def _cross_enhanced(
-    X: np.ndarray, static: np.ndarray, y: np.ndarray, subjects: np.ndarray,
-    splits: list, folds: list, oof: list,
+    static: np.ndarray, y: np.ndarray, subjects: np.ndarray,
+    prepared: list, folds: list, oof: list,
 ) -> None:
-    for fold, (train, test) in enumerate(splits, 1):
+    for fold, (train, test, X_train, X_test) in enumerate(prepared, 1):
         train_subjects = np.unique(subjects[train])
         scaler = StandardScaler().fit(static[train])
         static_scaled = scaler.transform(static)
         subject_features = {
             s: np.mean(static_scaled[subjects == s], axis=0) for s in np.unique(subjects)
         }
-        base = RandomForestRegressor(**RF_CROSS).fit(X[train], y[train])
-        base_train = base.predict(X[train])
-        base_test = base.predict(X[test])
+        base = RandomForestRegressor(**RF_CROSS).fit(X_train, y[train])
+        base_train = base.predict(X_train)
+        base_test = base.predict(X_test)
         residuals = y[train] - base_train
         alphas = np.array([np.mean(residuals[subjects[train] == s]) for s in train_subjects])
         features = np.array([subject_features[s] for s in train_subjects])
@@ -208,36 +238,36 @@ def _cross_enhanced(
         prediction = base_test + best_lambda * alpha_test
         _record(
             folds, oof, "cross_subject", CROSS_MODEL, fold, train, test,
-            y, y, subjects, prediction, "raw_PT", base_test, lambda_used=best_lambda,
+            y, subjects, prediction, base_test, lambda_used=best_lambda,
         )
         print(f"Regression cross-subject fold {fold}/{N_SPLITS}: lambda={best_lambda}", flush=True)
 
 
 def _comparison_models() -> dict:
     return {
-        "ExtraTrees": ExtraTreesRegressor(n_estimators=200, random_state=42, n_jobs=-1),
+        "ExtraTrees": ExtraTreesRegressor(n_estimators=200, random_state=42, n_jobs=1),
         "AdaBoost": AdaBoostRegressor(random_state=42),
         "CatBoost": CatBoostRegressor(
             iterations=500, learning_rate=0.1, depth=6, loss_function="RMSE",
-            random_seed=42, verbose=False, allow_writing_files=False,
+            random_seed=42, verbose=False, allow_writing_files=False, thread_count=1,
         ),
     }
 
 
-def _comparisons(X: np.ndarray, y: np.ndarray, subjects: np.ndarray, splits: list,
+def _comparisons(y: np.ndarray, subjects: np.ndarray, prepared: list,
                  setting: str, folds: list, oof: list) -> None:
     for name, model in _comparison_models().items():
-        for fold, (train, test) in enumerate(splits, 1):
-            model.fit(X[train], y[train])
+        for fold, (train, test, X_train, X_test) in enumerate(prepared, 1):
+            model.fit(X_train, y[train])
             _record(
-                folds, oof, setting, name, fold, train, test, y, y, subjects,
-                model.predict(X[test]), "raw_PT",
+                folds, oof, setting, name, fold, train, test, y, subjects,
+                model.predict(X_test),
             )
-    for fold, (train, test) in enumerate(splits, 1):
+    for fold, (train, test, _, _) in enumerate(prepared, 1):
         prediction = np.full(len(test), float(np.mean(y[train])))
         _record(
-            folds, oof, setting, "TrainingMean", fold, train, test, y, y,
-            subjects, prediction, "raw_PT",
+            folds, oof, setting, "TrainingMean", fold, train, test, y,
+            subjects, prediction,
         )
 
 
@@ -260,8 +290,7 @@ def _plots(metrics: pd.DataFrame, output: Path) -> None:
         "within_subject": [WITHIN_MODEL, "ExtraTrees", "AdaBoost", "CatBoost", "TrainingMean"],
         "cross_subject": [CROSS_MODEL, "ExtraTrees", "AdaBoost", "CatBoost", "TrainingMean"],
     }
-    for metric, ylabel, multiplier in (("r2", "R²", 1), ("mae", "MAE (μs)", 1), ("mape", "MAPE (%)", 100)):
-        fig, ax = plt.subplots(figsize=(10, 6.3))
+    def draw(ax, metric: str, ylabel: str, multiplier: float) -> None:
         for offset, (setting, names) in enumerate(orders.items()):
             data = metrics[metrics["setting"] == setting].set_index("model").loc[names]
             values = data[f"{metric}_mean"].to_numpy() * multiplier
@@ -273,26 +302,42 @@ def _plots(metrics: pd.DataFrame, output: Path) -> None:
             ax.bar_label(bars, fmt="%.2f", padding=3, fontsize=9)
         ax.set_xticks(np.arange(5), labels)
         ax.set_ylabel(ylabel)
-        ax.set_title("Historical regression result reproduction")
         ax.legend(frameon=False)
         ax.margins(y=0.17)
         ax.axhline(0, color="black", linewidth=0.6)
         ax.spines[["top", "right"]].set_visible(False)
+
+    note = (
+        "* Non-cross: RF + partially pooled subject intercept; cross: RF + CatBoost-predicted intercept.\n"
+        "All test scores use raw PT. Non-cross RF clips training PT at its training fold's 2%/98% quantiles; dynamic scaling is fitted on training rows.\n"
+        "Bars are unweighted means of five folds. Historical fixed model and feature choices remain; evaluation is not fully nested."
+    )
+    for metric, ylabel, multiplier in (("r2", "R²", 1), ("mae", "MAE (μs)", 1), ("mape", "MAPE (%)", 100)):
+        fig, ax = plt.subplots(figsize=(10, 6.3))
+        draw(ax, metric, ylabel, multiplier)
+        ax.set_title("Regression with training-fold preprocessing")
         fig.text(
-            0.07, 0.015,
-            "* Non-cross: RF + partially pooled subject intercept; cross: RF + CatBoost-predicted intercept.\n"
-            "Evaluation target differs: non-cross enhanced RF uses winsorized PT; other bars use raw PT.\n"
-            "Historical parameters/preprocessing are retained; these bars are not a corrected unbiased comparison.",
-            fontsize=8, va="bottom",
+            0.07, 0.015, note, fontsize=7, va="bottom",
         )
         fig.tight_layout(rect=(0, 0.12, 1, 1))
         fig.savefig(output / f"regression_comparison_{metric}.png", dpi=200)
         plt.close(fig)
 
+    # Paper-style Fig.16: identical metrics, with MAPE as a fraction (not percent).
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5.8))
+    for ax, (metric, ylabel) in zip(axes, (("r2", "R²"), ("mae", "MAE (μs)"), ("mape", "MAPE (fraction)"))):
+        draw(ax, metric, ylabel, 1)
+        ax.tick_params(axis="x", labelsize=9)
+    fig.suptitle("Regression with training-fold preprocessing", fontsize=15)
+    fig.text(0.045, 0.02, note, fontsize=9, va="bottom")
+    fig.tight_layout(rect=(0, 0.16, 1, 0.96))
+    fig.savefig(output / "regression_comparison_combined.png", dpi=300)
+    plt.close(fig)
 
-def _metadata(y: np.ndarray, limits: np.ndarray) -> dict:
+
+def _metadata(preprocessing_audit: list, target_audit: list) -> dict:
     return {
-        "purpose": "Recompute historical Fig.16 regression values, without new parameter searches.",
+        "purpose": "Recompute regression with train-only preprocessing and raw test PT, without new parameter searches.",
         "feature_file": "dataset/regression_features.xlsx",
         "target_file": "dataset/Y.xlsx",
         "row_alignment": "Supplied feature/target row order; zero-based row IDs in OOF output.",
@@ -306,7 +351,9 @@ def _metadata(y: np.ndarray, limits: np.ndarray) -> dict:
             "folds": N_SPLITS, "within_outer_seed": WITHIN_SEED, "cross_outer_seed": CROSS_SEED,
             "cross_split": "Subject-grouped KFold on sorted unique numeric IDs.",
             "aggregate": "Unweighted mean of five fold metrics; std uses ddof=0.",
-            "mape_unit": "Fraction in CSV; percent in the MAPE figure.",
+            "mape_unit": "Fraction in CSV and combined Fig.16; percent in the separate MAPE figure.",
+            "evaluation_target_all_models": "raw_PT",
+            "dynamic_scaling": "MinMaxScaler fitted separately on each outer training fold; reused by all models in that fold.",
         },
         "historical_parameters": {
             "within_rf": RF_WITHIN, "cross_rf": RF_CROSS,
@@ -315,21 +362,20 @@ def _metadata(y: np.ndarray, limits: np.ndarray) -> dict:
             "cross_lambda_candidates_training_only": LAMBDA_CANDIDATES,
         },
         "within_enhanced_target": {
-            "evaluation_target": "winsorized_PT",
-            "quantiles_full_cohort": [0.02, 0.98],
-            "clipping_limits_us": limits.tolist(),
-            "changed_label_count": int(np.sum(~np.isclose(y, np.clip(y, *limits)))),
-            "other_models_evaluation_target": "raw_PT",
+            "evaluation_target": "raw_PT",
+            "training_quantiles": [0.02, 0.98],
+            "clipping_rule": "Estimate limits from each outer training PT only; clip only training labels. All test labels remain raw.",
+            "folds": target_audit,
         },
+        "fold_preprocessing": preprocessing_audit,
         "limitations": [
             "Regression evaluation is not nested. Alpha=1 and fixed CatBoost intercept parameters were historically chosen using the same evaluation folds.",
             "The fixed 20-feature construction is inherited; this module does not reselect features inside folds.",
-            "Dynamic MinMax scaling and log-shift minima use the full cohort, as in the historical implementation.",
-            "Non-cross enhanced RF trains and scores on full-cohort winsorized PT, including changed held-out labels; its target differs from all other bars.",
+            "The fixed log feature construction is unchanged. _safe_log still defines a full-column minimum shift if non-positive values occur; all five logged columns in the supplied data are strictly positive, so no shift is applied here.",
             "Cross static StandardScaler is fitted on each outer training set; subject feature means use each subject's available feature rows.",
             "Cross lambda uses training-subject LOO intercept predictions, but residual targets come from the RF fitted in-sample on the same outer training set.",
             "Non-cross subject intercept calibration requires training PT observations from the same subjects; unavailable subject intercepts default to zero.",
-            "Packaging simplification preserves historical values; it does not resolve methodological bias or validate new-subject or pre-measurement clinical use.",
+            "Training-only scaling and target clipping fix the two preprocessing issues; they do not remove historical model-selection bias or validate pre-measurement clinical use.",
         ],
     }
 
@@ -339,15 +385,18 @@ def run(output_dir: Path) -> dict:
     output = Path(output_dir) / "regression"
     output.mkdir(parents=True, exist_ok=True)
     dynamic, static, y, subjects = _load_data()
-    # Full-cohort dynamic scaling is intentionally retained for historical parity.
-    X = MinMaxScaler().fit_transform(dynamic)
-    within = _splits(subjects, cross=False)
-    cross = _splits(subjects, cross=True)
+    preprocessing_audit, target_audit = [], []
+    within = _prepare_fold_inputs(
+        dynamic, subjects, _splits(subjects, cross=False), "within_subject", preprocessing_audit,
+    )
+    cross = _prepare_fold_inputs(
+        dynamic, subjects, _splits(subjects, cross=True), "cross_subject", preprocessing_audit,
+    )
     fold_rows, oof_rows = [], []
-    limits = _within_enhanced(X, y, subjects, within, fold_rows, oof_rows)
-    _cross_enhanced(X, static, y, subjects, cross, fold_rows, oof_rows)
-    _comparisons(X, y, subjects, within, "within_subject", fold_rows, oof_rows)
-    _comparisons(X, y, subjects, cross, "cross_subject", fold_rows, oof_rows)
+    _within_enhanced(y, subjects, within, fold_rows, oof_rows, target_audit)
+    _cross_enhanced(static, y, subjects, cross, fold_rows, oof_rows)
+    _comparisons(y, subjects, within, "within_subject", fold_rows, oof_rows)
+    _comparisons(y, subjects, cross, "cross_subject", fold_rows, oof_rows)
     folds = pd.DataFrame(fold_rows)
     oof = pd.DataFrame(oof_rows).sort_values(["setting", "model", "row"])
     metrics = _summary(folds)
@@ -357,7 +406,7 @@ def run(output_dir: Path) -> dict:
     oof[oof["model"].isin([WITHIN_MODEL, CROSS_MODEL])].to_csv(
         output / "enhanced_oof_predictions.csv", index=False,
     )
-    metadata = _metadata(y, limits)
+    metadata = _metadata(preprocessing_audit, target_audit)
     (output / "metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     _plots(metrics, output)
     print(metrics.to_string(index=False), flush=True)
