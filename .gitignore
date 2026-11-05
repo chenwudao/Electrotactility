@@ -30,3 +30,7 @@ Thumbs.db
 
 # Internal documents (handover guides, response drafts) - kept local only
 docs/
+
+# Local audit evidence and generated reproduction outputs
+audit_artifacts/
+/results/
