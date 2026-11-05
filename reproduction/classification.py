@@ -225,6 +225,68 @@ def plot_results(metrics, predictions, output_dir):
                xticks=[0, 1], yticks=[0, 1])
     fig.savefig(output_dir / "confusion_matrices_strict.png", dpi=200)
     plt.close(fig)
+    plot_fold_mean_paper_figures(metrics, predictions, output_dir)
+
+
+def plot_fold_mean_paper_figures(metrics, predictions, output_dir):
+    """Draw paper figures from equal-weight outer-fold means, including random baselines."""
+    import matplotlib.pyplot as plt
+    from matplotlib import font_manager
+    from matplotlib.ticker import AutoMinorLocator
+    for candidate in font_manager.findSystemFonts():
+        try:
+            if font_manager.FontProperties(fname=candidate).get_name() == "Times New Roman":
+                font_manager.fontManager.addfont(candidate)
+        except (OSError, RuntimeError, ValueError):
+            continue
+    scenarios = ["Non-cross-subject", "Cross-subject"]
+    names = ["RandomForest", "ExtraTrees", "KNN", "SVM_SVR"]
+    labels = ["RandomForest", "ExtraTrees", "KNN", "SVM", "Baseline"]
+    colors = ["#e9c498", "#a1cda2"]
+    paper_rows = []
+    with plt.rc_context({"font.family": "serif", "font.serif": ["Times New Roman", "Liberation Serif", "DejaVu Serif"],
+                         "axes.linewidth": 1.4, "axes.edgecolor": "black"}):
+        for margin in (0, 15):
+            fig, ax = plt.subplots(figsize=(11.5, 8.5))
+            for i, scenario in enumerate(scenarios):
+                subset = metrics[(metrics.scenario == scenario) & (metrics.margin_us == margin)].set_index("model")
+                values = [float(subset.loc[name, "fold_mean"]) for name in names]
+                # Baseline uses the SAME equal-fold weighting as all model bars.
+                frame = predictions[predictions.scenario == scenario]
+                expected = []
+                for _, fold in frame.groupby("fold"):
+                    proportion = 0.0 if margin == 0 else float((np.abs(fold.y_true_PT - THRESHOLD_CUTOFF) <= margin).mean())
+                    expected.append(.5 + .5 * proportion)
+                values.append(float(np.mean(expected)))
+                bars = ax.bar(np.arange(5) + (i-.5)*.4, np.array(values)*100, .4,
+                              label="Non-Cross Subject" if i == 0 else "Cross Subject", color=colors[i],
+                              edgecolor="white", linewidth=1.0)
+                for j, (bar, value) in enumerate(zip(bars, values)):
+                    ax.annotate(f"{value*100:.2f}",(bar.get_x()+bar.get_width()/2, value*100),
+                                ha="center", va="bottom", xytext=(0,3),textcoords="offset points",fontsize=20)
+                    paper_rows.append({"scenario":scenario,"model":names[j] if j<4 else "ExpectedUniformRandom",
+                        "margin_us":margin,"accuracy_fold_mean":value,"display_percent":f"{value*100:.2f}",
+                        "aggregation":"unweighted mean of five outer-fold scores"})
+            ax.set_xticks(np.arange(5),labels,fontsize=25)
+            ax.set_ylabel("Accuracy (%)",fontsize=34)
+            ax.set_ylim(0,100);ax.tick_params(axis="y",labelsize=26,direction="in",length=4,width=1.8)
+            ax.yaxis.set_minor_locator(AutoMinorLocator(2));ax.tick_params(axis="y",which="minor",direction="in",length=2,width=1.6)
+            ax.legend(loc="upper right",fontsize=24,frameon=True)
+            fig.tight_layout();fig.savefig(output_dir/f"paper_model_comparison_fold_mean_margin{margin}.png",dpi=300);plt.close(fig)
+        fig, ax = plt.subplots(figsize=(8,6))
+        for i, scenario in enumerate(scenarios):
+            frame = metrics[(metrics.scenario == scenario) & (metrics.model == "RandomForest")].sort_values("margin_us")
+            ax.plot(frame.margin_us,frame.fold_mean*100,"o-",label="Non-Cross Subject" if i==0 else "Cross Subject",
+                    color=["#f2b179","#7ecb8b"][i],linewidth=2)
+            for _,row in frame.iterrows():
+                ax.annotate(f"{row.fold_mean*100:.2f}",(row.margin_us,row.fold_mean*100),
+                            textcoords="offset points",xytext=(0,7),ha="center",fontsize=13)
+        ax.set_xlabel("Margin",fontsize=24);ax.set_ylabel("Accuracy (%)",fontsize=24)
+        ax.set_xticks([0,5,10,15]);ax.tick_params(labelsize=16)
+        ax.set_ylim(71,86);ax.grid(True,color="#e8e8e8",linewidth=.75)
+        ax.legend(loc="upper left",fontsize=16,frameon=True)
+        fig.tight_layout();fig.savefig(output_dir/"paper_margin_accuracy_fold_mean.png",dpi=300);plt.close(fig)
+    pd.DataFrame(paper_rows).to_csv(output_dir/"paper_fold_mean_plotted_values.csv",index=False)
 
 
 def run(output_dir):

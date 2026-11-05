@@ -320,97 +320,120 @@ def _plots(metrics: pd.DataFrame, output: Path) -> None:
             "Install Times New Roman or set ELECTROTACTILITY_FONT to its font file for the manuscript typeface.",
             UserWarning, stacklevel=2,
         )
+    # Geometry measured from image object 155 on page 42 of the revised PDF.
+    # Work in the original 1182 x 307 pixel coordinate system, not the old DOCX.
+    from matplotlib.transforms import Bbox
+    reference_width, reference_height, reference_dpi = 1182, 307, 200
+    reference_placement_pt = (425.55, 110.59)
+    frame_pixels = (
+        (39.0960451977, 45.1588235294, 378.0287356322, 281.6420454545),
+        (431.2588235294, 44.7426900585, 773.0914285714, 281.2022471910),
+        (836.5454545455, 47.0175438596, 1175.1314285714, 283.6497175141),
+    )
     labels = ["RandomForest", "ExtraTrees", "AdaBoost", "CatBoost", "Baseline"]
     orders = {
         "within_subject": [WITHIN_MODEL, "ExtraTrees", "AdaBoost", "CatBoost", "TrainingMean"],
         "cross_subject": [CROSS_MODEL, "ExtraTrees", "AdaBoost", "CatBoost", "TrainingMean"],
     }
     colors = ["#f7c58a", "#9ad49b"]
-
-    def draw(ax, metric: str, title: str, scale: float = 1.0) -> None:
-        values_by_setting = []
-        width = 0.36
-        for offset, (setting, names) in enumerate(orders.items()):
-            data = metrics[metrics["setting"] == setting].set_index("model").loc[names]
-            values = data[f"{metric}_mean"].to_numpy(dtype=float)
-            values_by_setting.append(values)
-            ax.bar(
-                np.arange(5) + (offset - 0.5) * width, values, width,
-                label="Non-Cross Subject" if offset == 0 else "Cross Subject",
-                color=colors[offset],
-            )
-        within_values, cross_values = values_by_setting
-        if metric == "r2":
-            limits = (
-                min(-0.05, float(cross_values.min()) - 0.05),
-                max(0.55, float(within_values.max()) + 0.05),
-            )
-        else:
-            margin = 12.0 if metric == "mae" else 0.08
-            limits = (0.0, float(max(within_values.max(), cross_values.max())) + margin)
-        ax.set_ylim(*limits)
-        label_offset = 0.01 * (limits[1] - limits[0])
-        for offset, values in enumerate(values_by_setting):
-            for i, value in enumerate(values):
-                ax.text(
-                    i + (offset - 0.5) * width, value + label_offset, f"{value:.2f}",
-                    ha="center", va="bottom", fontsize=12 * scale,
-                )
-        ax.set_xticks(np.arange(5), labels)
-        ax.set_ylabel(title, fontsize=24 * scale)
-        ax.set_title(title, fontsize=24 * scale)
-        ax.legend(
-            loc="upper right" if metric == "r2" else "upper left",
-            frameon=True, fontsize=16 * scale, fancybox=True,
-        )
-        ax.tick_params(axis="both", labelsize=16 * scale, colors="black", width=1.2)
-        ax.yaxis.set_major_locator(MultipleLocator(10 if metric == "mae" else 0.1))
-        ax.yaxis.set_minor_locator(AutoMinorLocator(2))
-        ax.tick_params(axis="y", which="major", direction="in", length=4, width=1.8, left=True, right=False)
-        ax.tick_params(axis="y", which="minor", direction="in", length=2, width=1.6, left=True, right=False)
-        ax.grid(False)
-        for spine in ax.spines.values():
-            spine.set_visible(True)
-            spine.set_color("black")
-            spine.set_linewidth(1.4)
-
+    panels = (("r2", "R2"), ("mae", "MAE"), ("mape", "MAPE"))
     style = {
         "font.family": "serif", "font.serif": font_families,
-        "axes.edgecolor": "black", "axes.linewidth": 1.4,
         "axes.labelcolor": "black", "xtick.color": "black", "ytick.color": "black",
         "text.color": "black", "axes.facecolor": "white", "figure.facecolor": "white",
     }
-    panels = (("r2", "R2"), ("mae", "MAE"), ("mape", "MAPE"))
     with plt.rc_context(style):
-        for metric, title in panels:
-            fig, ax = plt.subplots(figsize=(8, 6))
-            draw(ax, metric, title)
-            fig.tight_layout()
-            fig.savefig(output / f"regression_comparison_{metric}.png", dpi=300)
-            plt.close(fig)
+        fig = plt.figure(figsize=(reference_width / reference_dpi, reference_height / reference_dpi))
+        for index, ((metric, title), rect) in enumerate(zip(panels, frame_pixels)):
+            left, top, right, bottom = (coordinate + .5 for coordinate in rect)
+            ax = fig.add_axes([left / reference_width, 1 - bottom / reference_height,
+                               (right - left) / reference_width, (bottom - top) / reference_height])
+            values_by_setting = []
+            width = 0.36
+            for offset, (setting, names) in enumerate(orders.items()):
+                data = metrics[metrics["setting"] == setting].set_index("model").loc[names]
+                values = data[f"{metric}_mean"].to_numpy(dtype=float)
+                values_by_setting.append(values)
+                ax.bar(np.arange(5) + (offset - 0.5) * width, values, width,
+                       label="Non-Cross Subject" if offset == 0 else "Cross Subject",
+                       color=colors[offset], linewidth=0)
+            within_values, cross_values = values_by_setting
+            if metric == "r2":
+                limits = (min(-0.05, float(cross_values.min()) - 0.05),
+                          max(0.55, float(within_values.max()) + 0.05))
+            else:
+                limits = (0, float(max(within_values.max(), cross_values.max()))
+                          + (12 if metric == "mae" else 0.08))
+            ax.set_ylim(*limits)
+            for offset, values in enumerate(values_by_setting):
+                for j, value in enumerate(values):
+                    ax.text(j + (offset - .5) * width, value + .01 * (limits[1] - limits[0]),
+                            f"{value:.2f}", ha="center", va="bottom", fontsize=4.25)
+            ax.set_xticks(np.arange(5), labels)
+            ax.tick_params(axis="x", labelsize=4.4, length=0, pad=1.9)
+            ax.tick_params(axis="y", labelsize=4.7, pad=0.8)
+            ax.yaxis.set_major_locator(MultipleLocator(10 if metric == "mae" else 0.1))
+            ax.yaxis.set_minor_locator(AutoMinorLocator(2))
+            ax.tick_params(axis="y", which="major", direction="in", length=1.0, width=.30)
+            ax.tick_params(axis="y", which="minor", direction="in", length=.48, width=.245)
+            ax.grid(False)
+            for spine in ax.spines.values():
+                spine.set_visible(True); spine.set_color("black"); spine.set_linewidth(.21)
+                spine.set_snap(False)
+            # The measured original title baselines are 43/42/45 pixels.
+            title_baseline = (43, 42, 45)[index]
+            fig.text((left + right) / (2 * reference_width), 1 - title_baseline / reference_height,
+                     title, ha="center", va="baseline", fontsize=6.0)
+            ylabel_x, ylabel_y = ((13.5, 163.5), (408.5, 163.5), (810.5, 165.5))[index]
+            fig.text(ylabel_x / reference_width, 1 - ylabel_y / reference_height,
+                     title, rotation=90, ha="center", va="center", fontsize=6.0)
+            # Match the original panel-letter ink locations, including the larger b.
+            from matplotlib.textpath import TextPath
+            letter = "abc"[index]
+            letter_box = TextPath((0, 0), letter, size=12.0,
+                                  prop=font_manager.FontProperties(fname=font_path)).get_extents()
+            ink_left = (4, 396, 797)[index]
+            letter_x = ink_left - letter_box.x0 * reference_dpi / 72
+            letter_y = 41 + letter_box.y0 * reference_dpi / 72
+            fig.text(letter_x / reference_width, 1 - letter_y / reference_height,
+                     letter, ha="left", va="baseline", fontsize=12.0)
+            legend_left, legend_top = ((246, 50), (438, 50), (843, 53))[index]
+            legend = ax.legend(loc="upper left", bbox_to_anchor=(legend_left / reference_width,
+                                1 - legend_top / reference_height), bbox_transform=fig.transFigure,
+                               borderaxespad=0, frameon=True, fontsize=4.25,
+                               handlelength=2.0, handletextpad=.4, borderpad=.45,
+                               labelspacing=.5, fancybox=True)
+            legend.get_frame().set_linewidth(.25)
 
-        # Preserve the original manuscript's 4121:1058 horizontal aspect ratio.
-        fig, axes = plt.subplots(1, 3, figsize=(4121 / 300, 1058 / 300))
-        panel_scale = (4121 / 300) / (3 * 8)
-        for letter, ax, (metric, title) in zip("abc", axes, panels):
-            draw(ax, metric, title, panel_scale)
-            ax.text(-0.11, 1.015, letter, transform=ax.transAxes,
-                    fontsize=28 * panel_scale, ha="left", va="bottom")
-        fig.subplots_adjust(left=0.045, right=0.995, bottom=0.11, top=0.90, wspace=0.18)
-        fig.savefig(output / "regression_comparison_combined.png", dpi=300)
+        # 3x the PDF raster resolution; physical dimensions match its PDF placement.
+        combined_size = (reference_width * 3, reference_height * 3)
+        physical_dpi = tuple(pixels * 72 / points for pixels, points in
+                             zip(combined_size, reference_placement_pt))
+        fig.savefig(output / "regression_comparison_reference200.png", dpi=200)
+        fig.savefig(output / "regression_comparison_combined.png", dpi=600,
+                    pil_kwargs={"dpi": physical_dpi})
+        # Standalone panels retain the combined figure's measured typography/geometry.
+        for (metric, _), (left, right) in zip(panels, ((0, 385), (394, 780), (796, 1182))):
+            box = Bbox.from_extents(left / reference_dpi, 0,
+                                   right / reference_dpi, reference_height / reference_dpi)
+            fig.savefig(output / f"regression_comparison_{metric}.png", dpi=600,
+                        bbox_inches=box, pad_inches=0)
         plt.close(fig)
 
     (output / "plot_style.json").write_text(json.dumps({
-        "reference": "Revised Manuscript.pdf, Fig.16",
+        "reference": "Revised Manuscript.pdf page 42, image object 155",
         "requested_font": "Times New Roman", "actual_font": actual_font,
         "font_file": font_path, "font_fallback_used": actual_font != "Times New Roman",
-        "font_override": font_override,
-        "colors": colors, "mape_unit_all_figures": "fraction", "dpi": 300,
-        "standalone_size_inches": [8, 6], "combined_size_pixels": [4121, 1058],
+        "font_override": font_override, "colors": colors,
+        "mape_unit_all_figures": "fraction", "export_dpi_nominal": 600,
+        "reference_raster_size_pixels": [reference_width, reference_height],
+        "reference_placement_points": list(reference_placement_pt),
+        "reference_placement_cm": [p / 72 * 2.54 for p in reference_placement_pt],
+        "frame_coordinates_in_reference_pixels": frame_pixels,
+        "combined_size_pixels": list(combined_size), "combined_physical_dpi": physical_dpi,
+        "style_note": "Axes positions, thin strokes, title/letter sizes calibrated to revised PDF; raster antialiasing can differ.",
         "display_labels": labels,
-        "random_forest_display_label": {
-            "within_subject": WITHIN_MODEL, "cross_subject": CROSS_MODEL,
-        },
+        "random_forest_display_label": {"within_subject": WITHIN_MODEL, "cross_subject": CROSS_MODEL},
         "baseline_display_label": "TrainingMean",
         "source_values": "Five-fold unweighted means from metrics.csv; no fixed performance values.",
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

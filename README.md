@@ -82,7 +82,7 @@ the **training partition's PT median**, while true labels always use 156 us.
 Fixed model settings are in `downstream_models()`. Sex-only logistic and
 training-majority classifiers are also recomputed on the same splits.
 
-| Setting | Outer seed | Inner base seed | RF strict accuracy | RF margin=15 score |
+| Setting | Outer seed | Inner base seed | RF strict pooled accuracy | RF margin=15 pooled score |
 |---|---:|---:|---:|---:|
 | Non-cross-subject | 168 | 5 | 74.21875% | 84.375% |
 | Cross-subject | 93 | 42 | 72.65625% | 81.25% |
@@ -95,7 +95,13 @@ baseline is calculated from the actual band counts.
 
 Outputs in `results/classification/` include metrics, both settings' sample-level
 OOF predictions, per-fold selected features/VIP, fold indices/seeds/quotas, the
-random baseline and three figures. The confusion matrices use strict predictions.
+random baseline and three pooled-result figures. The confusion matrices use strict
+predictions. Three additional paper figures (`paper_model_comparison_fold_mean_margin0.png`,
+`paper_model_comparison_fold_mean_margin15.png`, `paper_margin_accuracy_fold_mean.png`)
+use unweighted means of the five outer folds. Their theoretical random baselines
+are also averaged within folds first; at margin 15 this gives 61.72% non-cross
+and 61.67% cross, rather than applying the pooled 61.72% to both. Exact plotted
+bar values are exported to `paper_fold_mean_plotted_values.csv`.
 
 ## Regression
 
@@ -135,12 +141,19 @@ PT clipping limits are estimated from that outer training fold only and applied
 only to its training labels. Other models keep raw training labels. Clipping
 limits and scaler fitting rows are recorded in `metadata.json`.
 
-Regression figures follow the manuscript Figure 16 style: Times New Roman, the
-original orange/green colours, black frames, inward ticks and a/b/c panels.
-Standalone figures are 2400 x 1800 pixels and the combined figure is
-4121 x 1058 pixels, all at 300 DPI. For the same typeface, install Times New Roman
-or set `ELECTROTACTILITY_FONT` to its `.ttf` file. Missing Times New Roman produces
-an explicit fallback warning; `plot_style.json` records the actual font used.
+Regression figures use the measured layout of image object 155 on page 42 of
+`Revised Manuscript.pdf`, rather than the earlier DOCX graphic. Its original raster
+is 1182 x 307 pixels and its PDF placement is 425.55 x 110.59 points
+(15.01246 x 3.90137 cm). The combined high-resolution output is 3546 x 921 pixels
+at approximately 600 DPI with physical-size metadata matching that placement;
+a 1182 x 307 reference-size output is also supplied. Axes rectangles, thin strokes,
+text sizes and a/b/c positions follow measured reference coordinates. Standalone
+figures are crops of the same calibrated canvas. True updated values and raster
+antialiasing mean that pixel identity is not claimed.
+
+Install Times New Roman or set `ELECTROTACTILITY_FONT` to its `.ttf` file for the
+same typeface. Missing Times New Roman produces an explicit fallback warning;
+`plot_style.json` records the actual font, dimensions and reference geometry.
 Fonts are not bundled. Display labels match the manuscript (`RandomForest` and
 `Baseline`); these denote the enhanced RF models described above and the
 training-mean baseline, respectively. Model identities must remain clear in the
